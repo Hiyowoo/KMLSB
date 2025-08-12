@@ -97,8 +97,8 @@
     let stationData = null;
 
     Promise.all([
-      fetch('/data-metro-line-1.0.0.json').then(r => r.json()),
-      fetch('/data-metro-station-1.0.0.json').then(r => r.json())
+      fetch('./data-metro-line-1.0.0.json').then(r => r.json()),
+      fetch('./data-metro-station-1.0.0.json').then(r => r.json())
     ]).then(([lineJson, stationJson]) => {
       lineData = lineJson.DATA || [];
       stationData = stationJson.DATA || [];
