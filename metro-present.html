@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>지하철 + 행정경계(시/군/구) 인터랙티브 (Final)</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <style>
+    html, body { height: 100%; margin: 0; }
+    #map { height: 100%; }
+    .toolbar{
+      position:absolute; top:10px; left:10px;
+      background:#fff; padding:10px; border-radius:8px;
+      box-shadow:0 2px 8px rgba(0,0,0,0.15); z-index:1000; font-size:14px;
+      display:inline-block; min-width:460px;
+    }
+    .row{ display:flex; align-items:center; gap:12px; }
+    .row-top{ flex-wrap:wrap; }
+    .row-admin{ display:flex; align-items:center; gap:12px; margin-top:8px; }
+    .row-lines{ margin-top:8px; }
+    .line-select-label{ display:flex; align-items:flex-start; gap:8px; }
+    #lineSelect{ width:300px; max-width:36vw; }
+    .legend {
+      position: absolute; bottom: 10px; left: 10px;
+      background: rgba(255,255,255,0.95);
+      padding: 8px 10px; border-radius: 6px;
+      box-shadow:0 2px 6px rgba(0,0,0,0.15);
+      z-index: 1000; font-size: 12px; max-width: 520px; line-height: 1.4;
+    }
+    .station-label {
+      background: transparent; padding: 0; border: none;
+      font-weight: bold; font-size: 13px; line-height: 1.2;
+      white-space: nowrap; box-shadow: none; transform: translateY(-10px);
+      pointer-events: none;
+    }
+    .admin-label{ 
+      background: rgba(255,255,255,0.85); padding: 2px 4px; border-radius: 4px;
+      font-size: 12px; border: 1px solid rgba(0,0,0,0.15); 
+      white-space: nowrap;
+    }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+
+  <div class="toolbar">
+    <div class="row row-top">
+      <label><input type="checkbox" id="toggleStations" checked> 역 마커</label>
+      <label><input type="checkbox" id="toggleLabels"> 역 이름 라벨</label>
+      <button id="fitBtn">보기 영역 맞추기</button>
+    </div>
+    <div class="row row-admin">
+      <label><input type="checkbox" id="toggleSiGun"> 시/군</label>
+      <label><input type="checkbox" id="toggleSiGunGu"> 시/군/구</label>
+      <label><input type="checkbox" id="toggleAdminLabels"> 행정 라벨</label>
+    </div>
+    <div class="row row-lines">
+      <label class="line-select-label">
+        호선:
+        <select id="lineSelect" multiple size="10"></select>
+      </label>
+    </div>
+  </div>
+
+  <div class="legend">
+    <div><b>사용법</b></div>
+    <div>• <em>시/군</em> 또는 <em>시/군/구</em> 체크로 경계 표시, 클릭하면 하이라이트</div>
+    <div>• <em>행정 라벨</em> 체크 시, 확대(≥10)에서 이름 라벨 표시</div>
+    <div>• 아래 줄: <em>호선</em> 다중 선택(Ctrl/Shift)</div>
+  </div>
+
+  <script>
+    // ---------------- Utilities ----------------
+    function getAdminName(f){
+      const p = (f && f.properties) ? f.properties : {};
+      const CITY_CODE_NAME = {
+        "3110":"고양시","3104":"안양시","3102":"성남시","3101":"수원시","3119":"용인시",
+        "3109":"안산시","3401":"천안시","3304":"청주시","3501":"전주시","3701":"포항시","3811":"창원시"
+      };
+      const keys = ["NAME_OUT","name","SIG_KOR_NM","SIG_NM","ADM_NM","A2","SGG_NM","SIG_NAME","sig_kor_nm","adm_nm"];
+      for (var i=0;i<keys.length;i++){
+        var k = keys[i];
+        for (var kk in p){
+          if (p.hasOwnProperty(kk) && kk.toLowerCase()===k.toLowerCase()){
+            var v = (p[kk]!==undefined && p[kk]!==null) ? String(p[kk]).trim() : "";
+            if (v){
+              if (/^\d{3,4}$/.test(v) && CITY_CODE_NAME[v]) return CITY_CODE_NAME[v];
+              return v;
+            }
+          }
+        }
+      }
+      var grp = String(p.GROUP || "");
+      var m = grp.match(/^C:(\d{3,4})$/);
+      if (m && CITY_CODE_NAME[m[1]]) return CITY_CODE_NAME[m[1]];
+      for (var k2 in p){
+        var v2 = p[k2];
+        if (typeof v2 === 'string' && /[가-힣](시|군|구)$/.test(v2.trim())) return v2.trim();
+      }
+      for (var k3 in p){
+        var v3 = p[k3];
+        if (typeof v3 === 'string' && v3.trim().length >= 2) return v3.trim();
+      }
+      return "";
+    }
+
+    // ---------------- Map base ----------------
+    const map = L.map('map', { preferCanvas:true }).setView([37.5665, 126.9780], 11);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; OpenStreetMap contributors'
+    }).addTo(map);
+
+    const lineLayer = L.layerGroup().addTo(map);
+    const stationMarkerLayer = L.layerGroup().addTo(map);
+    const stationLabelLayer = L.layerGroup().addTo(map);
+    let adminLabelLayer = L.layerGroup().addTo(map); // let로 선언(재생성 가능)
+
+    // ---------------- UI refs ----------------
+    const lineSelect = document.getElementById('lineSelect');
+    const toggleStations = document.getElementById('toggleStations');
+    const toggleLabels = document.getElementById('toggleLabels');
+    const fitBtn = document.getElementById('fitBtn');
+    const toggleSiGun = document.getElementById('toggleSiGun');
+    const toggleSiGunGu = document.getElementById('toggleSiGunGu');
+    const toggleAdminLabels = document.getElementById('toggleAdminLabels');
+
+    // ---------------- Data holders ----------------
+    let lineData = null;
+    let stationData = null;
+    let siGunLayer = null;
+    let siGunGuLayer = null;
+    let activeAdminLayer = null;
+
+    // ---------------- Styles ----------------
+    const styleDefault = { color:'#000', weight:1.5, fillOpacity:0, opacity:1 };
+    const styleHover   = { color:'#000', weight:3,   fillOpacity:0, opacity:1 };
+    const styleActive  = { color:'#1971c2', weight:3, fillOpacity:0, opacity:1 };
+
+    // ---------------- Admin handlers ----------------
+    function attachAdminHandlers(layer, feature){
+      layer.on({
+        mouseover: function(){ if (activeAdminLayer !== layer) layer.setStyle(styleHover); },
+        mouseout:  function(){ if (activeAdminLayer !== layer) layer.setStyle(styleDefault); },
+        click:     function(){
+          if (activeAdminLayer && activeAdminLayer !== layer) activeAdminLayer.setStyle(styleDefault);
+          activeAdminLayer = layer; layer.setStyle(styleActive); if (layer.bringToFront) layer.bringToFront();
+        }
+      });
+      var nm = getAdminName(feature);
+      if (nm) layer.bindTooltip(nm, {sticky:true});
+    }
+
+    function updateAdminLabels(){
+      if (!adminLabelLayer){ adminLabelLayer = L.layerGroup().addTo(map); }
+      adminLabelLayer.clearLayers();
+      if (!toggleAdminLabels.checked) return;
+      if (map.getZoom() < 10) return;
+      function addLabelsFor(layer){
+        if (!layer || !map.hasLayer(layer)) return;
+        layer.eachLayer(function(poly){
+          if (!poly.getBounds) return;
+          const center = poly.getBounds().getCenter();
+          const nm = (poly.feature && getAdminName(poly.feature)) || '';
+          if (!nm) return;
+          const icon = L.divIcon({ className:'admin-label', html: nm });
+          L.marker(center, { icon: icon, interactive:false }).addTo(adminLabelLayer);
+        });
+      }
+      addLabelsFor(siGunLayer);
+      addLabelsFor(siGunGuLayer);
+    }
+
+    // ---------------- Load & init ----------------
+    (async function init(){
+      try{
+        const [lineJson, stationJson] = await Promise.all([
+          fetch('./data-metro-line-1.0.0.json').then(r=>r.json()).catch(function(e){ console.warn('line JSON fetch fail', e); return {DATA:[]}; }),
+          fetch('./data-metro-station-1.0.0.json').then(r=>r.json()).catch(function(e){ console.warn('station JSON fetch fail', e); return {DATA:[]}; })
+        ]);
+        lineData = lineJson.DATA || [];
+        stationData = stationJson.DATA || [];
+
+        const lines = Array.from(new Set(lineData.map(function(d){return d.line;}))).sort();
+        const optAll = document.createElement('option'); optAll.value='__ALL__'; optAll.textContent='전체';
+        lineSelect.appendChild(optAll);
+        for (var i=0;i<lines.length;i++){
+          var opt=document.createElement('option'); opt.value=lines[i]; opt.textContent=lines[i]; lineSelect.appendChild(opt);
+        }
+        Array.from(lineSelect.options).forEach(function(o){ o.selected=(o.value==='__ALL__'); });
+
+        render();
+        lineSelect.addEventListener('change', onLineSelectChange);
+        toggleStations.addEventListener('change', updateToggles);
+        toggleLabels.addEventListener('change', updateToggles);
+        fitBtn.addEventListener('click', fitToVisible);
+        map.on('zoomend', function(){ updateLabelVisibility(); updateAdminLabels(); });
+
+        toggleSiGun.addEventListener('change', onToggleAdmin);
+        toggleSiGunGu.addEventListener('change', onToggleAdmin);
+        toggleAdminLabels.addEventListener('change', updateAdminLabels);
+      }catch(e){
+        console.error('초기화 오류:', e);
+      }
+    })();
+
+    function onLineSelectChange(){
+      const values = getSelectedLines();
+      if (values.includes('__ALL__') && values.length > 1){
+        Array.from(lineSelect.options).forEach(function(o){ o.selected=(o.value==='__ALL__'); });
+      }else if(!values.length){
+        Array.from(lineSelect.options).forEach(function(o){ o.selected=(o.value==='__ALL__'); });
+      }
+      render();
+    }
+    function getSelectedLines(){ return Array.from(lineSelect.selectedOptions).map(function(o){return o.value;}); }
+    function getLineColorMap(){
+      const m={}; (lineData||[]).forEach(function(d){ if(!m[d.line] && d.color) m[d.line]=d.color; });
+      return m;
+    }
+
+    function render(){
+      lineLayer.clearLayers(); stationMarkerLayer.clearLayers(); stationLabelLayer.clearLayers();
+      const selectedValues = getSelectedLines(); const colorMap=getLineColorMap(); const bounds=[];
+
+      const dashedLines = new Set(['동탄인덕원선']);
+      const dashedPairs = new Set(['GTXA|서울|삼성','GTXA|삼성|서울','GTXA|삼성|수서','GTXA|수서|삼성']);
+
+      (lineData||[]).forEach(function(lineObj){
+        if (!selectedValues.includes('__ALL__') && !selectedValues.includes(lineObj.line)) return;
+        const color=lineObj.color||'#008000';
+        (lineObj.node||[]).forEach(function(edge){
+          const via=edge.via||[];
+          if (via.length>=2){
+            const latlngs=via.map(function(xy){ return [xy[0], xy[1]]; });
+            const fromName = edge.station && edge.station[0] ? edge.station[0].name : '';
+            const toName   = edge.station && edge.station[1] ? edge.station[1].name : '';
+            const isDashed = dashedLines.has(lineObj.line) || dashedPairs.has(lineObj.line+'|'+fromName+'|'+toName);
+            const poly=L.polyline(latlngs,{color:color,weight:4,opacity:0.95, dashArray: isDashed ? '8 8' : null});
+            poly.addTo(lineLayer); latlngs.forEach(function(ll){ bounds.push(ll); });
+          }
+        });
+      });
+
+      (stationData||[]).forEach(function(st){
+        if (!selectedValues.includes('__ALL__') && !selectedValues.includes(st.line)) return;
+        if (typeof st.lat!=='number' || typeof st.lng!=='number') return;
+        const color = getLineColorMap()[st.line] || '#111';
+        const marker=L.circleMarker([st.lat, st.lng],{radius:4,weight:1,color:'#222',fillColor:color,fillOpacity:0.9}).bindTooltip(st.name+' ('+st.line+')',{direction:'top'});
+        marker.addTo(stationMarkerLayer);
+
+        const labelIcon=L.divIcon({className:'station-label', html: st.name, iconAnchor:[0,0]});
+        const label=L.marker([st.lat, st.lng],{icon:labelIcon, interactive:false});
+        label.addTo(stationLabelLayer);
+        bounds.push([st.lat, st.lng]);
+      });
+
+      updateToggles();
+      if (bounds.length) map.fitBounds(bounds,{padding:[24,24]});
+    }
+
+    function updateToggles(){
+      if (toggleStations.checked){ if (!map.hasLayer(stationMarkerLayer)) map.addLayer(stationMarkerLayer); }
+      else { if (map.hasLayer(stationMarkerLayer)) map.removeLayer(stationMarkerLayer); }
+      if (toggleLabels.checked){ if (!map.hasLayer(stationLabelLayer)) map.addLayer(stationLabelLayer); }
+      else { if (map.hasLayer(stationLabelLayer)) map.removeLayer(stationLabelLayer); }
+      updateLabelVisibility();
+    }
+
+    function updateLabelVisibility(){
+      const showLabels = toggleLabels.checked && map.getZoom() >= 12;
+      stationLabelLayer.eachLayer(function(layer){
+        const el = layer.getElement && layer.getElement();
+        if (el) el.style.display = showLabels ? '' : 'none';
+      });
+    }
+
+    function fitToVisible(){
+      const b=L.latLngBounds([]);
+      lineLayer.eachLayer(function(layer){ if (layer.getBounds) b.extend(layer.getBounds()); });
+      stationMarkerLayer.eachLayer(function(layer){ if (layer.getLatLng) b.extend(layer.getLatLng()); });
+      stationLabelLayer.eachLayer(function(layer){ if (layer.getLatLng) b.extend(layer.getLatLng()); });
+      if (siGunLayer && map.hasLayer(siGunLayer) && siGunLayer.getBounds) b.extend(siGunLayer.getBounds());
+      if (siGunGuLayer && map.hasLayer(siGunGuLayer) && siGunGuLayer.getBounds) b.extend(siGunGuLayer.getBounds());
+      if (b.isValid()) map.fitBounds(b,{padding:[24,24]});
+    }
+
+    // ---------------- Admin boundaries toggle ----------------
+    const URL_SIGUN   = './jido_line_sigunonly.geojson';
+    const URL_SIGUNGU = './jido_line_sigungu.geojson';
+
+    async function ensureSiGun(){
+      if (siGunLayer) return;
+      try{
+        const res = await fetch(URL_SIGUN);
+        const data = await res.json();
+        siGunLayer = L.geoJSON(data, {
+          style: styleDefault,
+          onEachFeature: function(f, l){ attachAdminHandlers(l, f); }
+        });
+      }catch(e){ console.error('시/군 GeoJSON 로드 오류', e); }
+    }
+
+    async function ensureSiGunGu(){
+      if (siGunGuLayer) return;
+      try{
+        const res = await fetch(URL_SIGUNGU);
+        const data = await res.json();
+        siGunGuLayer = L.geoJSON(data, {
+          style: { color:'#000', weight:1, fillOpacity:0, opacity:1 },
+          onEachFeature: function(f, l){ attachAdminHandlers(l, f); }
+        });
+      }catch(e){ console.error('시/군/구 GeoJSON 로드 오류', e); }
+    }
+
+    async function onToggleAdmin(){
+      if (toggleSiGun.checked){ await ensureSiGun(); if (siGunLayer && !map.hasLayer(siGunLayer)) map.addLayer(siGunLayer); }
+      else { if (siGunLayer && map.hasLayer(siGunLayer)) map.removeLayer(siGunLayer); }
+      if (toggleSiGunGu.checked){ await ensureSiGunGu(); if (siGunGuLayer && !map.hasLayer(siGunGuLayer)) map.addLayer(siGunGuLayer); }
+      else { if (siGunGuLayer && map.hasLayer(siGunGuLayer)) map.removeLayer(siGunGuLayer); }
+      updateAdminLabels();
+    }
+  </script>
+</body>
+</html>
