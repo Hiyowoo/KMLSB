@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>지하철 노선/역 시각화 (2줄 툴바 · 다중 호선 선택 · 라벨 개선)</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <style>
+    html, body { height: 100%; margin: 0; }
+    #map { height: 100%; }
+    .toolbar{
+      position:absolute; top:10px; left:10px;
+      background:#fff; padding:10px; border-radius:8px;
+      box-shadow:0 2px 8px rgba(0,0,0,0.15); z-index:1000; font-size:14px;
+      display:inline-block; min-width:380px;
+    }
+    .row{ display:flex; align-items:center; gap:12px; }
+    .row-top{ flex-wrap:wrap; }
+    .row-lines{ margin-top:8px; }
+    .line-select-label{ display:flex; align-items:flex-start; gap:8px; }
+    #lineSelect{
+      width:300px;           /* 10행 표시 */
+      max-width:36vw;
+    }
+    .legend {
+      position: absolute;
+      bottom: 10px; left: 10px;
+      background: rgba(255,255,255,0.95);
+      padding: 8px 10px;
+      border-radius: 6px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+      z-index: 1000;
+      font-size: 12px;
+      max-width: 480px;      /* 한 줄 유지 */
+      line-height: 1.4;
+    }
+    /* 역 이름 라벨: 투명 배경 + 볼드 + 1pt 크게(≈13px) */
+    .station-label {
+      background: transparent;
+      padding: 0;
+      border: none;
+      font-weight: bold;
+      font-size: 13px;
+      line-height: 1.2;
+      white-space: nowrap;
+      box-shadow: none;
+      transform: translateY(-10px);
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+
+  <div class="toolbar">
+    <!-- 윗줄: 토글 + 버튼 -->
+    <div class="row row-top">
+      <label><input type="checkbox" id="toggleSiGun"> 시/군</label>
+      <label><input type="checkbox" id="toggleSiGunGu"> 시/군/구</label>
+
+      <label><input type="checkbox" id="toggleStations" checked> 역 마커</label>
+      <label><input type="checkbox" id="toggleLabels"> 역 이름 라벨</label>
+      <button id="fitBtn">보기 영역 맞추기</button>
+    </div>
+    <!-- 아랫줄: 호선 다중 선택 -->
+    <div class="row row-lines">
+      <label class="line-select-label">
+        호선:
+        <select id="lineSelect" multiple size="10"></select>
+      </label>
+    </div>
+  </div>
+
+  <div class="legend">
+    <div><b>사용법</b></div>
+    <div>• 위 줄: <em>역 마커</em> / <em>역 이름 라벨</em> / <em>보기 영역 맞추기</em></div>
+    <div>• 아래 줄: <em>호선</em> 다중 선택(Ctrl/Shift)</div>
+  </div>
+
+  <script>
+    const map = L.map('map').setView([37.5665, 126.9780], 11);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; OpenStreetMap contributors'
+    }).addTo(map);
+
+    const lineLayer = L.layerGroup().addTo(map);
+    const stationMarkerLayer = L.layerGroup().addTo(map);
+    const stationLabelLayer = L.layerGroup().addTo(map);
+
+    const lineSelect = document.getElementById('lineSelect');
+    const toggleStations = document.getElementById('toggleStations');
+    const toggleLabels = document.getElementById('toggleLabels');
+    const fitBtn = document.getElementById('fitBtn');
+
+    let lineData = null;
+    let stationData = null;
+
+    Promise.all([
+      fetch('/data-metro-line-1.0.0.json').then(r => r.json()),
+      fetch('/data-metro-station-1.0.0.json').then(r => r.json())
+    ]).then(([lineJson, stationJson]) => {
+      lineData = lineJson.DATA || [];
+      stationData = stationJson.DATA || [];
+
+      // 호선 목록
+      const lines = Array.from(new Set(lineData.map(d => d.line))).sort();
+      const optAll = document.createElement('option');
+      optAll.value = '__ALL__';
+      optAll.textContent = '전체';
+      lineSelect.appendChild(optAll);
+      for (const ln of lines) {
+        const opt = document.createElement('option');
+        opt.value = ln;
+        opt.textContent = ln;
+        lineSelect.appendChild(opt);
+      }
+      // 기본: 전체만 선택
+      Array.from(lineSelect.options).forEach(o => o.selected = (o.value === '__ALL__'));
+
+      render();
+
+      lineSelect.addEventListener('change', onLineSelectChange);
+      toggleStations.addEventListener('change', updateToggles);
+      toggleLabels.addEventListener('change', updateToggles);
+      fitBtn.addEventListener('click', fitToVisible);
+      map.on('zoomend', updateLabelVisibility);
+    }).catch(err => {
+      console.error('데이터 로드 오류:', err);
+      alert('JSON 파일을 불러오는 데 실패했습니다. 파일 경로를 확인하세요.');
+    });
+
+    function onLineSelectChange() {
+      const values = getSelectedLines();
+      // '__ALL__'과 다른 값이 함께 선택되면 '__ALL__'만 유지
+      if (values.includes('__ALL__') && values.length > 1) {
+        Array.from(lineSelect.options).forEach(o => o.selected = (o.value === '__ALL__'));
+      } else if (!values.length) {
+        // 아무것도 선택 안 되면 전체로 복구
+        Array.from(lineSelect.options).forEach(o => o.selected = (o.value === '__ALL__'));
+      }
+      render();
+    }
+
+    function getSelectedLines() {
+      return Array.from(lineSelect.selectedOptions).map(o => o.value);
+    }
+
+    function getLineColorMap() {
+      const m = {};
+      (lineData || []).forEach(d => {
+        if (!m[d.line] && d.color) m[d.line] = d.color;
+      });
+      return m;
+    }
+
+function render() {
+  lineLayer.clearLayers();
+  stationMarkerLayer.clearLayers();
+  stationLabelLayer.clearLayers();
+
+  const selectedValues = getSelectedLines();
+  const colorMap = getLineColorMap();
+  const bounds = [];
+
+  // 라인 단위 점선 처리 집합
+  const dashedLines = new Set(['동탄인덕원선']);
+
+  // 점선 처리할 구간 (양방향 포함)
+  const dashedPairs = new Set([
+    'GTXA|서울|삼성',
+    'GTXA|삼성|서울',
+    'GTXA|삼성|수서',
+    'GTXA|수서|삼성'
+  ]);
+
+  // 노선
+  (lineData || []).forEach(lineObj => {
+    if (!selectedValues.includes('__ALL__') && !selectedValues.includes(lineObj.line)) return;
+    const color = lineObj.color || '#008000';
+    (lineObj.node || []).forEach(edge => {
+      const via = edge.via || [];
+      if (via.length >= 2) {
+        const latlngs = via.map(([lat, lng]) => [lat, lng]);
+        
+        // 해당 edge의 두 역 이름
+        const fromName = edge.station && edge.station[0] ? edge.station[0].name : '';
+        const toName   = edge.station && edge.station[1] ? edge.station[1].name : '';
+        
+        // 점선 여부 판별
+        const isDashed =
+        dashedLines.has(lineObj.line) ||
+        dashedPairs.has(`${lineObj.line}|${fromName}|${toName}`);
+        
+        const poly = L.polyline(latlngs, { 
+          color, 
+          weight: 4, 
+          opacity: 0.95,
+          dashArray: isDashed ? '8 8' : null
+        });
+        poly.addTo(lineLayer);
+        latlngs.forEach(ll => bounds.push(ll));
+      }
+    });
+  });
+
+  // 역: 마커 + 라벨
+  (stationData || []).forEach(st => {
+    if (!selectedValues.includes('__ALL__') && !selectedValues.includes(st.line)) return;
+    if (typeof st.lat !== 'number' || typeof st.lng !== 'number') return;
+    const color = colorMap[st.line] || '#111';
+
+    const marker = L.circleMarker([st.lat, st.lng], {
+      radius: 4, weight: 1, color: '#222', fillColor: color, fillOpacity: 0.9
+    }).bindTooltip(`${st.name} (${st.line})`, {direction:'top'});
+    marker.addTo(stationMarkerLayer);
+
+    const labelIcon = L.divIcon({
+      className: 'station-label',
+      html: st.name,
+      iconAnchor: [0, 0]
+    });
+    const label = L.marker([st.lat, st.lng], { icon: labelIcon, interactive: false });
+    label.addTo(stationLabelLayer);
+
+    bounds.push([st.lat, st.lng]);
+  });
+
+  updateToggles();
+  if (bounds.length) {
+    map.fitBounds(bounds, { padding: [24,24] });
+  }
+}
+
+
+    function updateToggles() {
+      if (toggleStations.checked) {
+        if (!map.hasLayer(stationMarkerLayer)) map.addLayer(stationMarkerLayer);
+      } else {
+        if (map.hasLayer(stationMarkerLayer)) map.removeLayer(stationMarkerLayer);
+      }
+      if (toggleLabels.checked) {
+        if (!map.hasLayer(stationLabelLayer)) map.addLayer(stationLabelLayer);
+      } else {
+        if (map.hasLayer(stationLabelLayer)) map.removeLayer(stationLabelLayer);
+      }
+      updateLabelVisibility();
+    }
+
+    // 줌 낮을 때 라벨 자동 숨김(가독성)
+    function updateLabelVisibility() {
+      const showLabels = toggleLabels.checked && map.getZoom() >= 12;
+      stationLabelLayer.eachLayer(layer => {
+        const el = layer.getElement && layer.getElement();
+        if (el) el.style.display = showLabels ? '' : 'none';
+      });
+    }
+
+    function fitToVisible() {
+      const b = L.latLngBounds([]);
+      lineLayer.eachLayer(layer => {
+        if (layer.getBounds) b.extend(layer.getBounds());
+      });
+      stationMarkerLayer.eachLayer(layer => {
+        if (layer.getLatLng) b.extend(layer.getLatLng());
+      });
+      stationLabelLayer.eachLayer(layer => {
+        if (layer.getLatLng) b.extend(layer.getLatLng());
+      });
+      if (b.isValid()) map.fitBounds(b, { padding: [24,24] });
+    }
+  </script>
+
+
+<!-- 행정구역 경계 GeoJSON 토글 -->
+<script>
+  const toggleSiGun = document.getElementById('toggleSiGun');
+  const toggleSiGunGu = document.getElementById('toggleSiGunGu');
+
+  // 레이어 객체
+  let siGunLayer = null;
+  let siGunGuLayer = null;
+
+  // 스타일
+  const styleSiGun = { color: "#000000", weight: 2, fillOpacity: 0, opacity: 1 };
+  const styleSiGunGu = { color: "#000000", weight: 1, fillOpacity: 0, opacity: 1 };
+
+  // 데이터 URL (같은 폴더에 위치해야 함)
+  const URL_SIGUN = 'jido_line_sigunonly.geojson';
+  const URL_SIGUNGU = 'jido_line_sigungu.geojson';
+
+  // 토글 동작
+  toggleSiGun.addEventListener('change', () => {
+    if (toggleSiGun.checked) {
+      ensureSiGun().then(() => { if (siGunLayer) { map.addLayer(siGunLayer); siGunLayer.bringToFront(); }});
+    } else {
+      if (siGunLayer && map.hasLayer(siGunLayer)) map.removeLayer(siGunLayer);
+    }
+  });
+  toggleSiGunGu.addEventListener('change', () => {
+    if (toggleSiGunGu.checked) {
+      ensureSiGunGu().then(() => { if (siGunGuLayer) { map.addLayer(siGunGuLayer); siGunGuLayer.bringToFront(); }});
+    } else {
+      if (siGunGuLayer && map.hasLayer(siGunGuLayer)) map.removeLayer(siGunGuLayer);
+    }
+  });
+
+  // 최초 상태: 체크 안 함
+  toggleSiGun.checked = false;
+  toggleSiGunGu.checked = false;
+
+  // 로더
+  async function ensureSiGun() {
+    if (siGunLayer) return;
+    try {
+      const res = await fetch(URL_SIGUN);
+      const data = await res.json();
+      siGunLayer = L.geoJSON(data, { style: styleSiGun });
+    } catch (e) {
+      console.error('시/군 GeoJSON 로드 오류:', e);
+      alert('시/군 GeoJSON을 불러오지 못했습니다. 파일 경로를 확인하세요.');
+    }
+  }
+  async function ensureSiGunGu() {
+    if (siGunGuLayer) return;
+    try {
+      const res = await fetch(URL_SIGUNGU);
+      const data = await res.json();
+      siGunGuLayer = L.geoJSON(data, { style: styleSiGunGu });
+    } catch (e) {
+      console.error('시/군/구 GeoJSON 로드 오류:', e);
+      alert('시/군/구 GeoJSON을 불러오지 못했습니다. 파일 경로를 확인하세요.');
+    }
+  }
+</script>
+
+
+
+</body>
+</html>
