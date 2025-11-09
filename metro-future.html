@@ -1,0 +1,705 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>미래 지하철 + 행정경계 (dashedRanges 최종)</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <style>
+    html, body { height:100%; margin:0; }
+    #map { height:100%; }
+    .toolbar{
+      position:absolute; top:10px; left:10px; z-index:1000;
+      background:#fff; padding:10px; border-radius:8px;
+      box-shadow:0 2px 8px rgba(0,0,0,.15); font-size:14px; min-width:460px;
+    }
+    .row{ display:flex; align-items:center; gap:12px; }
+    .row-top{ flex-wrap:wrap; }
+    .row-admin{ gap:12px; margin-top:8px; }
+    .row-lines{ margin-top:8px; }
+    .line-select-label{ display:flex; gap:8px; align-items:flex-start; }
+    #lineSelect{ width:300px; max-width:36vw; }
+    .station-label{
+      background:transparent; padding:0; border:none; font-weight:bold; font-size:13px; line-height:1.2;
+      white-space:nowrap; box-shadow:none; transform:translateY(-10px); pointer-events:none;
+    }
+    .admin-label{
+      background:rgba(255,255,255,.85); padding:2px 4px; border-radius:4px; font-size:12px; border:1px solid rgba(0,0,0,.15);
+      white-space:nowrap;
+    }
+
+        /* ── 역 팝업 배지용 ── */
+    .popup-stn{min-width:180px}
+    .popup-stn .title{font-weight:700;margin-bottom:6px;}
+    .popup-stn .badges{display:flex;flex-wrap:wrap;gap:4px}
+    .popup-stn .badge{padding:2px 6px;border-radius:10px;font-size:12px;color:#fff;white-space:nowrap}
+
+
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+
+  <div class="toolbar">
+    <div class="row row-top">
+      <label><input type="checkbox" id="toggleStations" checked> 역 마커</label>
+      <label><input type="checkbox" id="toggleLabels"> 역 이름 라벨</label>
+      <button id="fitBtn">보기 영역 맞추기</button>
+    </div>
+    <div class="row row-admin">
+      <label><input type="checkbox" id="toggleSiGun"> 시/군</label>
+      <label><input type="checkbox" id="toggleSiGunGu"> 시/군/구</label>
+      <label><input type="checkbox" id="toggleEupMyeonDong"> 읍/면/동</label>
+      <label><input type="checkbox" id="toggleAdminLabels"> 행정 라벨</label>
+    </div>
+    <div class="row" style="margin-top:8px">
+      <label>역 검색:</label>
+      <input id="stationSearch" list="stationList" placeholder="역명 입력" style="width:200px" />
+      <datalist id="stationList"></datalist>
+      <button id="stationGo" type="button">이동</button>
+    </div>
+    <div class="row row-lines">
+      <label class="line-select-label">
+        호선:
+      <select id="lineSelect" multiple size="10"></select>
+    </label>
+    </div>
+
+  <script>
+    // ----- Utilities -----
+    function getAdminName(f){
+      const p = (f && f.properties) ? f.properties : {};
+      const CITY_CODE_NAME = {"3110":"고양시","3104":"안양시","3102":"성남시","3101":"수원시","3119":"용인시","3109":"안산시","3401":"천안시","3304":"청주시","3501":"전주시","3701":"포항시","3811":"창원시"};
+      const keys = ["NAME_OUT","name","SIG_KOR_NM","SIG_NM","ADM_NM","A2","SGG_NM","SIG_NAME","sig_kor_nm","adm_nm"];
+      for (let k of keys){
+        for (let kk in p){
+          if (p.hasOwnProperty(kk) && kk.toLowerCase()===k.toLowerCase()){
+            const v = (p[kk]!=null) ? String(p[kk]).trim() : "";
+            if (!v) continue;
+            if (/^\d{3,4}$/.test(v) && CITY_CODE_NAME[v]) return CITY_CODE_NAME[v];
+            return v;
+          }
+        }
+      }
+      const grp = String(p.GROUP || "");
+      const m = grp.match(/^C:(\d{3,4})$/);
+      if (m && CITY_CODE_NAME[m[1]]) return CITY_CODE_NAME[m[1]];
+      for (let k2 in p){ const v2 = p[k2]; if (typeof v2==='string' && /[가-힣](시|군|구)$/.test(v2.trim())) return v2.trim(); }
+      for (let k3 in p){ const v3 = p[k3]; if (typeof v3==='string' && v3.trim().length>=2) return v3.trim(); }
+      return "";
+    }
+
+    // ----- Map base -----
+    const map = L.map('map', { preferCanvas:true }).setView([37.5665, 126.9780], 11);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'&copy; OpenStreetMap contributors'}).addTo(map);
+    // === Click to show lat/lng popup (minimal, non-breaking) ===
+    const __latlngClickPopup = L.popup();
+    map.on('click', function(e){
+      const lat = (e.latlng.lat).toFixed(6);
+      const lng = (e.latlng.lng).toFixed(6);
+      __latlngClickPopup
+        .setLatLng(e.latlng)
+        .setContent(`<div style="font-size:13px;line-height:1.4">위도: ${lat}<br>경도: ${lng}</div>`)
+        .openOn(map);
+    });
+
+
+    const lineLayer = L.layerGroup().addTo(map);
+    const stationMarkerLayer = L.layerGroup().addTo(map);
+    const stationLabelLayer = L.layerGroup().addTo(map);
+    let adminLabelLayer = L.layerGroup().addTo(map);
+
+    // ----- UI refs -----
+    const lineSelect = document.getElementById('lineSelect');
+    const toggleStations = document.getElementById('toggleStations');
+    const toggleLabels = document.getElementById('toggleLabels');
+    const fitBtn = document.getElementById('fitBtn');
+    const toggleSiGun = document.getElementById('toggleSiGun');
+    const toggleSiGunGu = document.getElementById('toggleSiGunGu');
+    const toggleEupMyeonDong = document.getElementById('toggleEupMyeonDong');
+    const toggleAdminLabels = document.getElementById('toggleAdminLabels');
+    // 검색 UI
+    const stationSearch = document.getElementById('stationSearch');
+    const stationGo = document.getElementById('stationGo');
+    const stationList = document.getElementById('stationList');
+
+    // ----- Data holders -----
+    let lineData = null;
+    let stationData = null;
+    let siGunLayer = null, siGunGuLayer = null, eupMyeonDongLayer = null, activeAdminLayer = null;
+
+    // ----- Styles -----
+    const styleDefault = { color:'#000', weight:1.5, fillOpacity:0, opacity:1 };
+    const styleHover   = { color:'#000', weight:3,   fillOpacity:0, opacity:1 };
+    const styleActive  = { color:'#1971c2', weight:3, fillOpacity:0, opacity:1 };
+
+    function attachAdminHandlers(layer, feature){
+      layer.on({
+        mouseover(){ if (activeAdminLayer !== layer) layer.setStyle(styleHover); },
+        mouseout(){  if (activeAdminLayer !== layer) layer.setStyle(styleDefault); },
+        click(){
+          if (activeAdminLayer && activeAdminLayer !== layer) activeAdminLayer.setStyle(styleDefault);
+          activeAdminLayer = layer; layer.setStyle(styleActive); if (layer.bringToFront) layer.bringToFront();
+        }
+      });
+      const nm = getAdminName(feature); if (nm) layer.bindTooltip(nm,{sticky:true});
+    }
+
+    function updateAdminLabels(){
+      if (!adminLabelLayer) adminLabelLayer = L.layerGroup().addTo(map);
+      adminLabelLayer.clearLayers();
+      if (!toggleAdminLabels.checked) return;
+      if (map.getZoom() < 10) return;
+      function addLabelsFor(layer){
+        if (!layer || !map.hasLayer(layer)) return;
+        layer.eachLayer(function(poly){
+          if (!poly.getBounds) return;
+          const center = poly.getBounds().getCenter();
+          const nm = (poly.feature && getAdminName(poly.feature)) || '';
+          if (!nm) return;
+          const icon = L.divIcon({ className:'admin-label', html: nm });
+          L.marker(center, { icon, interactive:false }).addTo(adminLabelLayer);
+        });
+      }
+      addLabelsFor(siGunLayer); addLabelsFor(siGunGuLayer); addLabelsFor(eupMyeonDongLayer);
+    }
+
+    // ----- Load & init -----
+    (async function init(){
+      try{
+        const [lineJson, stationJson] = await Promise.all([
+          fetch('./data-metro-line-2.0.0.json').then(r=>r.json()).catch(e=>{ console.warn('line JSON fetch fail',e); return {DATA:[]}; }),
+          fetch('./data-metro-station-2.0.0.json').then(r=>r.json()).catch(e=>{ console.warn('station JSON fetch fail',e); return {DATA:[]}; })
+        ]);
+        lineData = lineJson.DATA || [];
+        stationData = stationJson.DATA || [];
+
+        const lines = Array.from(new Set(lineData.map(d=>d.line))).sort();
+        const optAll = document.createElement('option'); optAll.value='__ALL__'; optAll.textContent='전체';
+        lineSelect.appendChild(optAll);
+        for (const ln of lines){ const o=document.createElement('option'); o.value=ln; o.textContent=ln; lineSelect.appendChild(o); }
+        Array.from(lineSelect.options).forEach(o=>o.selected=(o.value==='__ALL__'));
+
+        render();
+        lineSelect.addEventListener('change', onLineSelectChange);
+        toggleStations.addEventListener('change', updateToggles);
+        toggleLabels.addEventListener('change', updateToggles);
+        fitBtn.addEventListener('click', fitToVisible);
+        map.on('zoomend', ()=>{ updateLabelVisibility(); updateAdminLabels(); });
+
+        toggleSiGun.addEventListener('change', onToggleAdmin);
+        toggleSiGunGu.addEventListener('change', onToggleAdmin);
+        toggleEupMyeonDong.addEventListener('change', onToggleAdmin);
+        toggleAdminLabels.addEventListener('change', updateAdminLabels);
+        // 역 검색 초기화/바인딩
+        rebuildStationLookup();
+        populateStationDatalist();
+        if (stationGo) stationGo.addEventListener('click', gotoStation);
+        if (stationSearch) stationSearch.addEventListener('keydown', (e)=>{ if (e.key==='Enter') gotoStation(); });
+
+      }catch(e){
+        console.error('초기화 오류:', e);
+      }
+    })();
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    function onLineSelectChange(){
+      const values = getSelectedLines();
+      if (values.includes('__ALL__') && values.length>1){
+        Array.from(lineSelect.options).forEach(o=>o.selected=(o.value==='__ALL__'));
+      }else if(!values.length){
+        Array.from(lineSelect.options).forEach(o=>o.selected=(o.value==='__ALL__'));
+      }
+      render();
+    }
+    function getSelectedLines(){ return Array.from(lineSelect.selectedOptions).map(o=>o.value); }
+    function getLineColorMap(){ const m={}; (lineData||[]).forEach(d=>{ if(!m[d.line] && d.color) m[d.line]=d.color; }); return m; }
+
+
+
+   
+        // ====== 겹치는 역 통합 + 팝업에 모든 호선 표시 유틸 ======
+    const ST_KEY_ROUND = 6; // 좌표 반올림(겹침 판정)
+    function _stKey(lat,lng){ return `${(+lat).toFixed(ST_KEY_ROUND)},${(+lng).toFixed(ST_KEY_ROUND)}`; }
+    function buildStationIndex(stationData, lineData){
+      const idx = new Map();
+      function add(st, lineName){
+        if (!st || typeof st.lat !== 'number' || typeof st.lng !== 'number') return;
+        const k = _stKey(st.lat, st.lng);
+        if (!idx.has(k)){
+          idx.set(k, {
+            lat: +st.lat, lng: +st.lng,
+            names: new Set(),
+            lines: new Set(),
+            station_nm_chn: st.station_nm_chn || null,
+            station_nm_jpn: st.station_nm_jpn || null,
+            station_nm_eng: st.station_nm_eng || null
+          });
+        }
+        const o = idx.get(k);
+        if (st.name) o.names.add(st.name);
+        if (lineName) o.lines.add(lineName);
+        if (st.station_nm_chn) o.station_nm_chn = st.station_nm_chn;
+        if (st.station_nm_jpn) o.station_nm_jpn = st.station_nm_jpn;
+        if (st.station_nm_eng) o.station_nm_eng = st.station_nm_eng;
+      }
+      (stationData||[]).forEach(st => add(st, st.line));
+      (lineData||[]).forEach(lineObj=>{
+        (lineObj.node||[]).forEach(edge=>{
+          (edge.station||[]).forEach(s => add(s, lineObj.line));
+        });
+      });
+      return Array.from(idx.values()).map(o => ({
+        ...o,
+        names: Array.from(o.names),
+        lines: Array.from(o.lines)
+      }));
+    }
+    
+    // ====== 역 검색용 Lookup & 이동 ======
+    let stationLookupByOption = new Map(); // "역명 — 라인" -> {lat,lng,name,line}
+
+    function rebuildStationLookup(){
+      stationLookupByOption.clear();
+      const idxArr = buildStationIndex(stationData, lineData);
+      idxArr.forEach(o => {
+        (o.names||[]).forEach(nm => {
+          (o.lines||[]).forEach(ln => {
+            const key = `${nm} — ${ln}`;
+            if (!stationLookupByOption.has(key)){
+              stationLookupByOption.set(key, {lat:o.lat, lng:o.lng, name:nm, line:ln});
+            }
+          });
+        });
+      });
+    }
+
+    function populateStationDatalist(){
+      if (!stationList) return;
+      // clear
+      stationList.innerHTML = '';
+      const keys = Array.from(stationLookupByOption.keys()).sort((a,b)=>a.localeCompare(b,'ko'));
+      keys.forEach(k => {
+        const opt = document.createElement('option');
+        opt.value = k;
+        stationList.appendChild(opt);
+      });
+    }
+
+    function findOptionFromInput(v){
+      if (!v) return null;
+      // 1) exact match
+      if (stationLookupByOption.has(v)) return stationLookupByOption.get(v);
+      // 2) name-only match: pick first entry whose key starts with "v —"
+      const lower = v.trim().toLowerCase();
+      for (const [k, info] of stationLookupByOption.entries()){
+        const namePart = k.split(' — ')[0].trim().toLowerCase();
+        if (namePart === lower) return info;
+      }
+      // 3) prefix contains
+      for (const [k, info] of stationLookupByOption.entries()){
+        if (k.toLowerCase().includes(lower)) return info;
+      }
+      return null;
+    }
+
+    function gotoStation(){
+      const v = (stationSearch && stationSearch.value || '').trim();
+      const info = findOptionFromInput(v);
+      if (!info) return;
+      const latlng = [info.lat, info.lng];
+      map.setView(latlng, Math.max(14, map.getZoom()));
+      // 팝업(가능하면 배지 포함)
+      const colorMap = getLineColorMap();
+      const popupHtml = `<div class="popup-stn"><div class="title">${info.name}</div><div class="badges"><span class="badge" style="background:${(colorMap[info.line]||'#666')}">${info.line}</span></div></div>`;
+      L.popup().setLatLng(latlng).setContent(popupHtml).openOn(map);
+    }
+function makeStationPopupHTML(o, colorMap){
+      const title = o.names[0] || '(무명역)';
+      const badges = o.lines
+        .sort((a,b)=> (a||'').localeCompare(b||''))
+        .map(l => `<span class="badge" style="background:${(colorMap&&colorMap[l])||'#666'}">${l}</span>`)
+        .join('');
+      return `<div class="popup-stn"><div class="title">${title}</div><div class="badges">${badges}</div></div>`;
+    }
+
+    // ====== 겹치는 VIA 자동 감지 + 평행(픽셀) 오프셋 렌더러 ======
+    const OVERLAP_OFFSET_PX = 1;   // 라인들 사이 간격(px)
+    const LINE_WEIGHT = 4;         // 라인 두께
+    const VIA_ROUND = 6;           // via 좌표 반올림(겹침 판정)
+
+    function _norm(v){ const m=Math.hypot(v.x,v.y)||1; return {x:v.x/m, y:v.y/m}; }
+    function _add(a,b){ return {x:a.x+b.x, y:a.y+b.y}; }
+    function _sub(a,b){ return {x:a.x-b.x, y:a.y-b.y}; }
+    function _scale(v,s){ return {x:v.x*s, y:v.y*s}; }
+
+    function offsetLatLngs(latlngs, offsetPx, map){
+      if(!latlngs || latlngs.length<2) return latlngs;
+      const pts = latlngs.map(ll => map.latLngToLayerPoint(L.latLng(ll[0], ll[1])));
+      const segNormals = [];
+      for(let i=0;i<pts.length-1;i++){
+        const t = _norm(_sub(pts[i+1], pts[i]));
+        const n = {x:-t.y, y:t.x};
+        segNormals.push(n);
+      }
+      const vNormals = [];
+      for(let i=0;i<pts.length;i++){
+        if(i===0) vNormals.push(segNormals[0]);
+        else if(i===pts.length-1) vNormals.push(segNormals[segNormals.length-1]);
+        else vNormals.push(_norm(_add(segNormals[i-1], segNormals[i])));
+      }
+      const ptsOff = pts.map((p,i)=> _add(p, _scale(vNormals[i], offsetPx)));
+      return ptsOff.map(p => {
+        const ll = map.layerPointToLatLng(L.point(p.x, p.y));
+        return [ll.lat, ll.lng];
+      });
+    }
+
+    function _roundLL(ll, d=VIA_ROUND){
+  return [ +(ll[0]).toFixed(d), +(ll[1]).toFixed(d) ];
+}
+function endpointKeyUndirected(latlngs, d=VIA_ROUND){
+  if (!Array.isArray(latlngs) || latlngs.length < 2) return JSON.stringify(latlngs||[]);
+  const a = _roundLL(latlngs[0], d);
+  const b = _roundLL(latlngs[latlngs.length-1], d);
+  const k1 = `${a[0]},${a[1]}|${b[0]},${b[1]}`;
+  const k2 = `${b[0]},${b[1]}|${a[0]},${a[1]}`;
+  return (k1 < k2) ? k1 : k2;
+}
+    
+    // ---- Safe station name accessor & station-based bucket key ----
+    function stName(edge, idx){
+      if (!edge || !edge.station || !edge.station[idx]) return '';
+      var s = edge.station[idx];
+      return (s && s.name) ? s.name : '';
+    }
+    function stationPairKeyUndirected(a,b){
+      a = (a||'').trim(); b = (b||'').trim();
+      if (!a || !b) return '';
+      var k1 = a + '|' + b, k2 = b + '|' + a;
+      return (k1 < k2) ? k1 : k2;
+    }
+    function keyForBucket(seg){
+      var k = stationPairKeyUndirected(seg.fromName, seg.toName);
+      if (k) return 'ST|' + k;
+      return 'LL|' + endpointKeyUndirected(seg.latlngs, VIA_ROUND);
+    }
+function offsetsFor(n, step=OVERLAP_OFFSET_PX){
+      if(n<=1) return [0];
+      const arr = [];
+      if(n%2===1){
+        const half=(n-1)/2;
+        for(let i=-half;i<=half;i++) arr.push(i*step);
+      }else{
+        const half=n/2;
+        for(let i=-half;i<0;i++) arr.push((i*2+1)*step/1);
+        for(let i=0;i<half;i++)  arr.push((i*2+1)*step/1);
+      }
+      return arr;
+    }
+
+
+
+
+
+
+
+
+
+    // ===== 핵심: dashedRanges를 그래프 탐색으로 확장 =====
+    function expandDashedRangesToPairs(lineData, dashedRanges, dashedPairs){
+      // 노선별 그래프/정점세트 캐시 생성
+      const byLine = new Map(); // line -> { edges:[{a,b}], adj: Map, verts:Set }
+      for (const lo of (lineData||[])){
+        const edges = [];
+        const adj = new Map();
+        const verts = new Set();
+        for (const e of (lo.node||[])){
+          const a = stName(e,0); const b = stName(e,1);
+          if (!a || !b) continue;
+          edges.push({a,b});
+          verts.add(a); verts.add(b);
+          if(!adj.has(a)) adj.set(a, new Set());
+          if(!adj.has(b)) adj.set(b, new Set());
+          adj.get(a).add(b); adj.get(b).add(a);
+        }
+        byLine.set(lo.line, {edges, adj, verts});
+      }
+
+      // BFS로 start→end 경로 찾기
+      function bfsPath(adj, s, t){
+        if (!adj.has(s) || !adj.has(t)) return null;
+        const q=[s]; const prev=new Map([[s,null]]); let head=0;
+        while(head<q.length){
+          const u=q[head++]; if (u===t) break;
+          for (const v of (adj.get(u)||[])){
+            if (!prev.has(v)){ prev.set(v,u); q.push(v); }
+          }
+        }
+        if (!prev.has(t)) return null;
+        const path=[]; let cur=t; while(cur!=null){ path.push(cur); cur=prev.get(cur); }
+        path.reverse(); return path; // [s,...,t]
+      }
+
+      for (const rg of (dashedRanges||[])){
+        const pack = byLine.get(rg.line);
+        if (!pack){ console.warn('[dashedRanges] line not found:', rg.line); continue; }
+        const {adj, verts} = pack;
+        if (!verts.has(rg.start) || !verts.has(rg.end)){
+          console.warn('[dashedRanges] station not found:', rg.line, rg.start, rg.end);
+          continue;
+        }
+        const path = bfsPath(adj, rg.start, rg.end) || bfsPath(adj, rg.end, rg.start);
+        if (!path || path.length<2){
+          console.warn('[dashedRanges] path not found:', rg.line, rg.start, rg.end);
+          continue;
+        }
+        // 경로상의 모든 연속 간선을 양방향으로 dashedPairs에 투입
+        for (let i=0;i<path.length-1;i++){
+          const a=path[i], b=path[i+1];
+          dashedPairs.add(`${rg.line}|${a}|${b}`);
+          dashedPairs.add(`${rg.line}|${b}|${a}`);
+        }
+      }
+    }
+
+    function render(){
+      lineLayer.clearLayers(); stationMarkerLayer.clearLayers(); stationLabelLayer.clearLayers();
+      const selectedValues = getSelectedLines(); const colorMap=getLineColorMap(); const bounds=[];
+
+      // 1) 라인 전체 점선
+      const dashedLines = new Set(['동탄인덕원선','대장홍대선','신안산선','위례선','동북선','GTXB','GTXC','GTXD','동탄-1호선','동탄-2호선']);
+
+      // 2) 간선(역-역) 점선
+      const dashedPairs = new Set([
+        'GTXA|서울|삼성','GTXA|삼성|서울','GTXA|삼성|수서','GTXA|수서|삼성',
+        '4호선|인덕원|과천정보타운','4호선|과천정보타운|인덕원','4호선|과천정보타운|정부과천청사','4호선|정부과천청사|과천정보타운',
+        '1호선|서동탄|솔빛나루','1호선|솔빛나루|서동탄','1호선|솔빛나루|동탄','1호선|동탄|솔빛나루'
+        // 필요시 여기에 더 추가
+      ]);
+
+      // 3) 구간(시작~끝) 점선 —> 그래프 탐색으로 dashedPairs에 자동 확장
+      const dashedRanges = [
+        { line:'7호선', start:'청라국제도시', end:'석남' },
+        { line:'7호선', start:'장암',         end:'포천' },
+        { line:'7호선', start:'덕정',         end:'옥정중앙' },
+        { line:'4호선', start:'별내별가람',   end:'오남'},
+        { line:'경춘선', start:'퇴계원',   end:'사릉'},
+        { line:'경의중앙선', start:'도농',   end:'양정'},
+        { line:'9호선', start:'중앙보훈병원',   end:'풍양'},
+        { line:'신분당선', start:'용산',   end:'신사'},
+        { line:'신분당선', start:'광교중앙',   end:'호매실'},
+        { line:'경강선', start:'연수',   end:'판교'},
+        { line:'3호선', start:'오금',   end:'하남시청'},
+        { line:'수인분당선',  start :'인하대',  end : '송도'}
+      ];
+      expandDashedRangesToPairs(lineData, dashedRanges, dashedPairs);
+
+      // 실제 그리기
+      (lineData||[]).forEach(function(lineObj){
+        if (!selectedValues.includes('__ALL__') && !selectedValues.includes(lineObj.line)) return;
+        const color = lineObj.color || '#008000';
+        (lineObj.node||[]).forEach(function(edge){
+          const via=edge.via||[];
+          if (via.length>=2){
+            const latlngs=via.map(xy=>[xy[0], xy[1]]);
+            const fromName = stName(edge,0) || '';
+            const toName   = stName(edge,1) || '';
+            const isDashed = dashedLines.has(lineObj.line) || dashedPairs.has(`${lineObj.line}|${fromName}|${toName}`);
+            /* base draw disabled to avoid duplication */
+latlngs.forEach(ll=>bounds.push(ll));
+          }
+        });
+      });
+
+      (stationData||[]).forEach(function(st){
+        if (!selectedValues.includes('__ALL__') && !selectedValues.includes(st.line)) return;
+        if (typeof st.lat!=='number' || typeof st.lng!=='number') return;
+        const color = colorMap[st.line] || '#111';
+        const marker=L.circleMarker([st.lat, st.lng],{radius:4,weight:1,color:'#222',fillColor:color,fillOpacity:0.9}).bindTooltip(`${st.name} (${st.line})`,{direction:'top'});
+        marker.addTo(stationMarkerLayer);
+
+        const labelIcon=L.divIcon({className:'station-label', html: st.name, iconAnchor:[0,0]});
+        L.marker([st.lat, st.lng],{icon:labelIcon, interactive:false}).addTo(stationLabelLayer);
+        bounds.push([st.lat, st.lng]);
+      });
+
+
+
+
+
+
+      // ==== 라인 세그먼트 수집 (선택된 호선만) ====
+      const segments = [];
+      (lineData||[]).forEach(function(lineObj){
+        if (!selectedValues.includes('__ALL__') && !selectedValues.includes(lineObj.line)) return;
+        const color = lineObj.color || '#008000';
+        (lineObj.node||[]).forEach(function(edge){
+          const via = edge.via || [];
+          if (via.length >= 2){
+            const latlngs = via.map(function(xy){ return [xy[0], xy[1]]; });
+            const fromName = stName(edge,0) || '';
+            const toName   = stName(edge,1) || '';
+            const dashed = dashedLines.has(lineObj.line) || dashedPairs.has(lineObj.line+'|'+fromName+'|'+toName);
+            segments.push({ line: lineObj.line, color, latlngs, dashed, fromName, toName });
+            latlngs.forEach(function(ll){ bounds.push(ll); });
+          }
+        });
+      });
+
+
+
+
+
+      // ==== 겹치는 VIA 자동 감지 → 평행(오프셋) 그리기 ====
+      const buckets = new Map();
+      segments.forEach(function(s){
+        const k = keyForBucket(s);
+        if (!buckets.has(k)) buckets.set(k, []);
+        buckets.get(k).push(s);
+      });
+
+      buckets.forEach(function(arr){
+        if (arr.length === 1){
+          const s = arr[0];
+          const weight = (s.line && s.line.startsWith('GTX'))
+                 ? LINE_WEIGHT * 1.5
+                 : LINE_WEIGHT;
+          L.polyline(s.latlngs, {
+            color: s.color, weight: weight, opacity: 0.95,
+            dashArray: s.dashed ? '8 8' : null
+          }).addTo(lineLayer);
+        } else {
+          
+          // 여러 라인이 같은 VIA를 공유 → 오프셋으로 나란히
+          // 라인별 대표 세그먼트 1개만 남김(정/역방향·중복 제거)
+          const byLine = new Map();
+          arr.forEach(s => { if (!byLine.has(s.line)) byLine.set(s.line, s); });
+          const items = Array.from(byLine.values()).sort((a,b)=> (a.line||'').localeCompare(b.line||''));
+          const offs = offsetsFor(items.length, OVERLAP_OFFSET_PX);
+          for (let i=0;i<items.length;i++){
+            const s = items[i];
+            const llOff = offsetLatLngs(s.latlngs, offs[i], map);
+            const weight = (s.line && s.line.startsWith('GTX'))
+                 ? LINE_WEIGHT * 1.5
+                 : LINE_WEIGHT;
+            L.polyline(llOff, { color: s.color, weight: weight, opacity: 0.95, dashArray: s.dashed ? '8 8' : null }).addTo(lineLayer);
+          }
+        }
+      });
+      
+      // === 겹치는 역 통합 후, 팝업에 모든 호선 배지 표시 ===
+      const stIndexArray = buildStationIndex(stationData, lineData);
+      stIndexArray.forEach(function(o){
+        if (!selectedValues.includes('__ALL__')){
+          const hit = o.lines.some(function(l){ return selectedValues.includes(l); });
+          if (!hit) return;
+        }
+        const chosenLines = selectedValues.includes('__ALL__') ? o.lines.slice() : o.lines.filter(l => selectedValues.includes(l));
+        const primaryLine = (chosenLines[0] || o.lines[0]);
+        const fillColor = colorMap[primaryLine] || '#111';
+        const marker = L.circleMarker([o.lat, o.lng], {
+          radius: 4, weight: 1, color: '#222',
+          fillColor: fillColor, fillOpacity: 0.9
+        }).addTo(stationMarkerLayer);
+        marker.bindPopup(makeStationPopupHTML(o, colorMap));
+        const labelName = (o.names[0] || '');
+        if (labelName){
+          const labelIcon = L.divIcon({ className:'station-label', html: labelName, iconAnchor:[0,0] });
+          L.marker([o.lat, o.lng], { icon: labelIcon, interactive:false }).addTo(stationLabelLayer);
+        }
+        bounds.push([o.lat, o.lng]);
+      });
+
+
+      updateToggles();
+      if (bounds.length) map.fitBounds(bounds,{padding:[24,24]});
+    }
+
+    function updateToggles(){
+      if (toggleStations.checked){ if (!map.hasLayer(stationMarkerLayer)) map.addLayer(stationMarkerLayer); }
+      else { if (map.hasLayer(stationMarkerLayer)) map.removeLayer(stationMarkerLayer); }
+      if (toggleLabels.checked){ if (!map.hasLayer(stationLabelLayer)) map.addLayer(stationLabelLayer); }
+      else { if (map.hasLayer(stationLabelLayer)) map.removeLayer(stationLabelLayer); }
+      updateLabelVisibility();
+    }
+
+    function updateLabelVisibility(){
+      const showLabels = toggleLabels.checked && map.getZoom() >= 12;
+      stationLabelLayer.eachLayer(function(layer){
+        const el = layer.getElement && layer.getElement();
+        if (el) el.style.display = showLabels ? '' : 'none';
+      });
+    }
+
+    function fitToVisible(){
+      const b=L.latLngBounds([]);
+      lineLayer.eachLayer(function(layer){ if (layer.getBounds) b.extend(layer.getBounds()); });
+      stationMarkerLayer.eachLayer(function(layer){ if (layer.getLatLng) b.extend(layer.getLatLng()); });
+      stationLabelLayer.eachLayer(function(layer){ if (layer.getLatLng) b.extend(layer.getLatLng()); });
+      if (siGunLayer && map.hasLayer(siGunLayer) && siGunLayer.getBounds) b.extend(siGunLayer.getBounds());
+      if (siGunGuLayer && map.hasLayer(siGunGuLayer) && siGunGuLayer.getBounds) b.extend(siGunGuLayer.getBounds());
+      if (eupMyeonDongLayer && map.hasLayer(eupMyeonDongLayer) && eupMyeonDongLayer.getBounds) b.extend(eupMyeonDongLayer.getBounds());
+      if (b.isValid()) map.fitBounds(b,{padding:[24,24]});
+    }
+
+
+
+
+
+
+
+
+
+    // ----- Admin boundaries toggle -----
+    const URL_SIGUN   = './jido_line_sigunonly.geojson';
+    const URL_SIGUNGU = './jido_line_sigungu.geojson';
+    const URL_EUPMYEONDONG = './jido_line_eupmyeondong.geojson';
+
+    async function ensureSiGun(){
+      if (siGunLayer) return;
+      try{
+        const res = await fetch(URL_SIGUN); const data = await res.json();
+        siGunLayer = L.geoJSON(data, { style: styleDefault, onEachFeature:(f,l)=>attachAdminHandlers(l,f) });
+      }catch(e){ console.error('시/군 GeoJSON 로드 오류', e); }
+    }
+    async function ensureSiGunGu(){
+      if (siGunGuLayer) return;
+      try{
+        const res = await fetch(URL_SIGUNGU); const data = await res.json();
+        siGunGuLayer = L.geoJSON(data, { style:{color:'#000',weight:1,fillOpacity:0,opacity:1}, onEachFeature:(f,l)=>attachAdminHandlers(l,f) });
+      }catch(e){ console.error('시/군/구 GeoJSON 로드 오류', e); }
+    }
+    async function ensureEupMyeonDong(){
+      if (eupMyeonDongLayer) return;
+      try{
+        const res = await fetch(URL_EUPMYEONDONG); const data = await res.json();
+        eupMyeonDongLayer = L.geoJSON(data, { style:{color:'#000',weight:1,fillOpacity:0,opacity:1}, onEachFeature:(f,l)=>attachAdminHandlers(l,f) });
+      }catch(e){ console.error('읍/면/동 GeoJSON 로드 오류', e); }
+    }
+    async function onToggleAdmin(){
+      if (toggleSiGun.checked){ await ensureSiGun(); if (siGunLayer && !map.hasLayer(siGunLayer)) map.addLayer(siGunLayer); }
+      else { if (siGunLayer && map.hasLayer(siGunLayer)) map.removeLayer(siGunLayer); }
+      if (toggleSiGunGu.checked){ await ensureSiGunGu(); if (siGunGuLayer && !map.hasLayer(siGunGuLayer)) map.addLayer(siGunGuLayer); }
+      else { if (siGunGuLayer && map.hasLayer(siGunGuLayer)) map.removeLayer(siGunGuLayer); }
+      if (toggleEupMyeonDong.checked){ await ensureEupMyeonDong(); if (eupMyeonDongLayer && !map.hasLayer(eupMyeonDongLayer)) map.addLayer(eupMyeonDongLayer); }
+      else { if (eupMyeonDongLayer && map.hasLayer(eupMyeonDongLayer)) map.removeLayer(eupMyeonDongLayer); }
+      updateAdminLabels();
+    }
+  </script>
+</body>
+</html>
