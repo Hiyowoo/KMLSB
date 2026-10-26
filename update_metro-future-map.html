@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="ko"><head><meta charset="utf-8"/><meta content="width=device-width, initial-scale=1" name="viewport"/><title>대한민국 4단계 행정경계 지도</title><link href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" rel="stylesheet"/><style>
+html,body,#map{height:100%;width:100%;padding:0;margin:0;font-family:Pretendard,Arial,sans-serif}#map{background:#e8eff4}.panel{position:absolute;z-index:1100;left:16px;top:16px;background:#fff;box-shadow:0 6px 28px #0002;border:1px solid #dfe5ed;border-radius:13px;padding:16px;width:300px;max-height:calc(100% - 50px);overflow:auto;box-sizing:border-box}.panel h2{font-size:16px;margin:0 0 5px}.sub{font-size:12px;color:#64748b;line-height:1.45;margin-bottom:13px}.check{display:flex;gap:8px;align-items:center;padding:9px 2px;font-size:13px;border-bottom:1px solid #f1f3f5;cursor:pointer}.check input{accent-color:#2563eb;width:16px;height:16px}.mark{width:32px;border-top:3px solid #000;display:inline-block}.small{font-size:11px;color:#718096;margin-left:auto}.block{font-size:12px;font-weight:700;display:block;margin:12px 0 5px}#search{box-sizing:border-box;width:100%;padding:9px;border:1px solid #ccd5df;border-radius:7px}#matches{max-height:150px;overflow:auto}#matches button{display:block;width:100%;padding:7px;text-align:left;border:0;background:white;border-bottom:1px solid #eee;cursor:pointer;font-size:12px}button{cursor:pointer}.bar{display:flex;gap:6px;margin-top:10px}.bar button{background:#f1f5f9;border:1px solid #ccd5df;border-radius:7px;padding:7px 9px}.status{color:#64748b;font-size:11px;margin-top:8px;line-height:1.5}.leaflet-tooltip.place{font-size:13px;font-weight:600;padding:6px 10px;background:white;border:1px solid #d4dce5;box-shadow:0 4px 13px #0002}.note{background:#f8fafc;border-radius:8px;padding:8px;font-size:11px;color:#526071;line-height:1.5;margin-top:12px}@media(max-width:650px){.panel{left:8px;top:8px;width:255px;padding:11px;max-height:60vh}}
+#map-credit{position:absolute;right:6px;bottom:2px;z-index:800;font:10px Arial,sans-serif;color:#666;background:rgba(255,255,255,.7);padding:1px 3px;pointer-events:none}
+.metro-head{margin:15px 0 5px;padding-top:12px;border-top:1px solid #e2e8f0;font-weight:750;font-size:13px}
+.metro-controls{display:flex;gap:12px;flex-wrap:wrap;margin:7px 0 9px;font-size:12px}
+.metro-controls label{display:flex;align-items:center;gap:4px;cursor:pointer}
+#metroLines{width:100%;height:116px;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:7px;font-size:12px;padding:4px;background:white}
+#metroQuery{width:100%;box-sizing:border-box;padding:9px;border-radius:7px;border:1px solid #cbd5e1;font-size:12px}
+#metroResults{max-height:140px;overflow:auto}
+#metroResults button{display:block;width:100%;text-align:left;padding:7px;background:white;border:none;border-bottom:1px solid #edf2f7;font-size:12px}
+.metro-hint{font-size:11px;color:#64748b;margin:5px 0 8px;line-height:1.45}
+.metro-popup .m-name{font-weight:750;font-size:14px;margin-bottom:5px}.metro-badge{display:inline-block;color:white;border-radius:12px;padding:3px 7px;margin:2px;font-size:11px;font-weight:650}
+.metro-label{font-weight:700;font-size:11px;white-space:nowrap;color:#111;background:rgba(255,255,255,.86);border:1px solid #e2e8f0;border-radius:4px;padding:1px 3px;box-shadow:0 1px 4px #0002}
+
+/* v2: sliding private map control panel */
+:root{--panel-width:330px;--panel-gap:14px;--accent:#2563eb}
+.panel{width:var(--panel-width);left:var(--panel-gap);top:14px;max-height:calc(100vh - 28px);padding:18px;border-radius:16px;box-shadow:0 14px 45px rgba(15,23,42,.18);transition:transform .23s ease,visibility .23s ease;scrollbar-width:thin;overscroll-behavior:contain}
+.panel-divider{border-top:2px solid #e4eaf4;margin:18px -18px 15px}
+#metroPanel .metro-head{font-weight:800;font-size:17px;border:none;padding:0;margin:0 0 8px;letter-spacing:-.5px;color:#0f172a}
+.panel h2{font-size:16px;letter-spacing:-.45px;margin-bottom:5px;color:#0f172a}
+.metro-controls{padding:10px 9px;gap:8px;border-radius:10px;background:#f3f7fc;display:flex;justify-content:space-between;margin-bottom:10px}
+.metro-controls label{white-space:nowrap;font-size:12px}.metro-controls input{accent-color:#2563eb}
+#metroLineFilter{width:100%;border:1px solid #cad5e3;border-radius:8px;padding:9px 10px;font-size:12px;box-sizing:border-box;margin:4px 0 6px;outline-color:#2563eb;background:#fff}
+#metroLines{height:138px;line-height:1.6;padding:5px;border-radius:9px}
+#metroLines option{padding:5px 7px;border-radius:4px}
+#panelToggle{position:absolute;z-index:1200;left:calc(var(--panel-width) + var(--panel-gap) + 8px);top:17px;min-height:42px;border:1px solid #d8e2ef;background:#fff;color:#1e293b;border-radius:11px;box-shadow:0 4px 16px #0002;padding:0 12px;font-size:13px;font-weight:750;cursor:pointer;transition:left .23s ease}
+#panelToggle:hover{background:#eff6ff}
+body.panel-collapsed .panel{transform:translateX(calc(-1 * (var(--panel-width) + 30px)));visibility:hidden;pointer-events:none}
+body.panel-collapsed #panelToggle{left:12px}
+#metroStatus{font-size:11px;color:#64748b}
+@media(max-width:650px){:root{--panel-width:min(315px,calc(100vw - 70px));--panel-gap:9px}.panel{top:8px;max-height:calc(100dvh - 16px);padding:13px}.panel-divider{margin-left:-13px;margin-right:-13px}#panelToggle{top:10px;padding:0 9px;font-size:12px}}
+
+/* Only actual station symbols capture input; transparent SVG canvas does not obscure district hover. */
+.leaflet-pane.leaflet-metroStationsPane-pane svg {pointer-events:none}
+.leaflet-pane.leaflet-metroStationsPane-pane .metro-station-hit {pointer-events:auto}
+</style></head><body><div id="map"></div><button aria-controls="sidebar" aria-expanded="true" id="panelToggle" title="지도 설정 접기" type="button">☰  설정 닫기</button><aside class="panel" id="sidebar"><section id="metroPanel"><div class="metro-head">지하철 · 도시철도</div>
+<div class="metro-controls"><label><input checked="" id="metroRoutesOn" type="checkbox"/>노선 표시</label><label><input checked="" id="metroStationsOn" type="checkbox"/>역 표시</label><label><input id="metroLabelsOn" type="checkbox"/>역 이름 표시</label></div>
+<label class="block" for="metroLines">호선 선택</label><input aria-label="호선 필터 검색" id="metroLineFilter" placeholder="호선 검색 · 예: GTX, 7호선, 신분당선" type="search"/><select aria-label="호선 다중 선택" id="metroLines" multiple="" size="6"></select><div class="metro-inline-actions" style="display:flex;justify-content:space-between;gap:6px;margin:5px 0 2px"><button id="metroAllLines" style="padding:5px 8px;font-size:11px;background:#edf3fb;border:1px solid #dae4ee;border-radius:7px" type="button">전체 노선</button><button id="metroClearFilter" style="padding:5px 8px;font-size:11px;background:#edf3fb;border:1px solid #dae4ee;border-radius:7px" type="button">검색 초기화</button></div>
+<div class="metro-hint">호선 검색 후 목록에서 선택하세요. Ctrl/Shift로 복수 선택 가능 · 계획 구간은 점선 표시.</div>
+<label class="block" for="metroQuery">지하철역 검색</label><input id="metroQuery" placeholder="역명 검색 (예: 동탄, 서울)"/><div id="metroResults"></div>
+<div class="status" id="metroStatus"></div></section><div class="panel-divider"></div><h2>대한민국 행정구역 지도</h2><div class="sub">4단계 경계를 선택할 수 있습니다. 지명은 체크된 단계 중 가장 상세한 단계만 표시됩니다.</div>
+<label class="block">경계선 표시</label>
+<label class="check"><input checked="" id="t0" type="checkbox"/><span class="mark" style="border-width:4px;border-color:#2563eb"></span>광역시·도 <span class="small">파랑 4px</span></label>
+<label class="check"><input checked="" id="t1" type="checkbox"/><span class="mark" style="border-width:2px"></span>시·군 <span class="small">2px</span></label>
+<label class="check"><input id="t2" type="checkbox"/><span class="mark" style="border-width:1px"></span>시·군·구 <span class="small">1px</span></label>
+<label class="check"><input id="t3" type="checkbox"/><span class="mark" style="border-top:1.5px dashed #000"></span>읍·면·동 <span class="small">점선 1.5px</span></label>
+
+<label class="block">지역 검색</label><input id="search" placeholder="예: 화성시, 병점구, 반월동"/><div id="matches"></div>
+<div class="bar"><button id="reset">전국 보기</button><button id="clear">선택 해제</button></div><div class="status" id="status"></div><div class="note">시·군 레벨에서는 광역시 소속 군을 따로 표시하지 않고 광역시 전체를 하나로 표시합니다. 세종시는 중복 표기하지 않습니다. 광주광역시와 전라남도는 분리됩니다.</div></aside><div aria-label="지도 저작자 표시" id="map-credit">© OpenStreetMap contributors</div>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script><script>
+(async function initExternalMap(){
+ const sources = [
+   ['01_sido.geojson','features'],['02_sigun.geojson','features'],
+   ['03_sigungu.geojson','features'],['04_eupmyeondong.geojson','features'],
+   ['data-metro-line-2.0.0.json','DATA'],['data-metro-station-2.0.0.json','DATA']
+ ];
+ let loaded;
+ try {
+   loaded = await Promise.all(sources.map(async ([file, field]) => {
+     const r = await fetch('./' + file);
+     if (!r.ok) throw new Error(file+' HTTP '+r.status);
+     const json = await r.json();
+     if (!Array.isArray(json[field])) throw new Error(file+' 데이터 형식 오류');
+     return field === 'features' ? json : json.DATA;
+   }));
+ } catch(err) {
+   const box = document.createElement('div');
+   box.style.cssText='position:absolute;z-index:9999;top:20px;left:20px;right:20px;background:#fff4f4;color:#991b1b;border:1px solid #fda4af;border-radius:10px;padding:18px;font:14px/1.6 sans-serif;max-width:600px';
+   box.textContent='지도 데이터 로딩 실패: '+err.message+' — HTML과 6개 데이터 파일을 같은 폴더에 넣고 http://127.0.0.1:8765/ 등 로컬 서버로 여세요. 파일을 직접 열면 브라우저 보안으로 차단될 수 있습니다.';
+   document.body.appendChild(box);
+   console.error(err);return;
+ }
+ const [provinceData,cityData,sigData,dongData,metroLineData,metroStationData]=loaded;
+
+
+
+
+const $=id=>document.getElementById(id);
+const panelToggle=$('panelToggle');
+function setPanelOpen(open){document.body.classList.toggle('panel-collapsed',!open);panelToggle.setAttribute('aria-expanded',String(open));panelToggle.textContent=open?'‹  설정 닫기':'☰  설정 열기';panelToggle.title=open?'패널 숨기기':'패널 열기';}
+panelToggle.addEventListener('click',()=>setPanelOpen(document.body.classList.contains('panel-collapsed')));
+setPanelOpen(window.innerWidth>650);
+
+if(typeof L==='undefined') { $('status').textContent='Leaflet 로딩 실패: 인터넷 연결 확인'; throw Error('Leaflet unavailable'); }
+const map=L.map('map',{preferCanvas:true,zoomControl:false,attributionControl:false}).setView([36.3,127.8],7);L.control.zoom({position:'bottomright'}).addTo(map);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19}).addTo(map);
+for (let i=0;i<4;i++){map.createPane('boundary'+i);map.getPane('boundary'+i).style.zIndex=420-i*5;}
+map.createPane('selection');map.getPane('selection').style.zIndex=450;map.getPane('selection').style.pointerEvents='none';
+const datasets=[provinceData,cityData,sigData,dongData];
+const weights=[4,2,1,1.5];let active=-1;const escaped=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+let chosen=null;const highlight=L.geoJSON(null,{pane:'selection',interactive:false,style:{color:'#008ace',weight:3.5,fill:true,fillColor:'#00a3e0',fillOpacity:.20}}).addTo(map);
+function choose(f,zoom){highlight.clearLayers();chosen=f;highlight.addData(f);if(zoom){const b=highlight.getBounds();if(b.isValid())map.fitBounds(b,{maxZoom:13,padding:[30,30]});}}
+function clear(){chosen=null;highlight.clearLayers();map.closePopup();}
+function nameOf(f){return String(f.properties?.display||f.properties?.A2||'지명 없음')}
+const layers=datasets.map((data,i)=>L.geoJSON(data,{pane:'boundary'+i,renderer:L.canvas({pane:'boundary'+i,padding:.5}),style:{color:i===0?'#2563eb':'#000',weight:weights[i],opacity:1,fill:true,fillColor:'#ffffff',fillOpacity:0,dashArray:i===3?'4 4':null},onEachFeature:(f,ly)=>{
+ ly.bindTooltip(escaped(nameOf(f)),{sticky:true,direction:'top',className:'place',opacity:.98});
+ ly.on('click',e=>{if(active!==i)return;L.DomEvent.stopPropagation(e);choose(f,false);L.popup({maxWidth:380}).setLatLng(e.latlng).setContent('<b>'+escaped(nameOf(f))+'</b>').openOn(map);});
+}}));
+function sync(){
+ const enabled=[0,1,2,3].filter(i=>$('t'+i).checked);active=enabled.length?Math.max(...enabled):-1;
+ for(let i=0;i<4;i++){const pane=map.getPane('boundary'+i);pane.style.zIndex=i===active?'440':String(410-i*5);pane.style.pointerEvents=i===active?'auto':'none';}
+ // Add from bottom up so the finest selected geometry receives hover and click.
+ for(let i=0;i<4;i++)if(map.hasLayer(layers[i]))map.removeLayer(layers[i]);
+ for(let i=0;i<4;i++){layers[i].eachLayer(l=>{l.options.interactive=(i===active);if(l._path)l._path.style.pointerEvents=i===active?'auto':'none'});}
+ for(let i=3;i>=0;i--)if(enabled.includes(i))layers[i].addTo(map);
+ $('status').textContent='지역 경계에 마우스를 올리거나 클릭하여 지명 확인 · 현재 기준: '+(active===-1?'체크된 단계 없음':['광역시·도','시·군','시·군·구','읍·면·동'][active]);
+}
+[0,1,2,3].forEach(i=>$('t'+i).addEventListener('change',sync));sync();
+const bounds=layers[2].getBounds();if(bounds.isValid())map.fitBounds(bounds,{padding:[15,15]});
+$('reset').onclick=()=>{if(bounds.isValid())map.fitBounds(bounds,{padding:[15,15]})};
+$('clear').onclick=()=>{clear();$('search').value='';$('matches').replaceChildren()};
+const index=[];datasets.forEach((data,i)=>data.features.forEach(f=>index.push({name:nameOf(f),i,feature:f})));
+$('search').oninput=e=>{const q=e.target.value.trim().toLowerCase();$('matches').replaceChildren();if(!q)return;const matches=index.filter(x=>x.name.toLowerCase().includes(q)).slice(0,22);if(!matches.length){$('matches').textContent='검색 결과 없음';return;}for(const result of matches){const b=document.createElement('button');b.textContent=result.name+' ('+['광역시·도','시·군','시·군·구','읍·면·동'][result.i]+')';b.onclick=()=>{$('t'+result.i).checked=true;sync();choose(result.feature,true);$('search').value=result.name;$('matches').replaceChildren()};$('matches').appendChild(b);}};
+
+
+/* --- 지하철 데이터: metro-future의 역/노선 및 예정 구간 규칙만 이식 --- */
+
+
+const metroById=id=>document.getElementById(id);
+map.createPane('metroRoutesPane');map.getPane('metroRoutesPane').style.zIndex=460;map.getPane('metroRoutesPane').style.pointerEvents='none';
+map.createPane('metroStationsPane');map.getPane('metroStationsPane').style.zIndex=480;map.getPane('metroStationsPane').style.pointerEvents='none';
+const metroStationRenderer=L.svg({pane:'metroStationsPane'});
+map.createPane('metroTextPane');map.getPane('metroTextPane').style.zIndex=490;map.getPane('metroTextPane').style.pointerEvents='none';
+const metroRoutes=L.layerGroup().addTo(map);
+const metroStations=L.layerGroup().addTo(map);
+const metroLabels=L.layerGroup();
+const metroColors=Object.fromEntries(metroLineData.map(x=>[x.line,x.color||'#555']));
+const metroNames=metroLineData.map(x=>x.line);
+const metroSelect=metroById('metroLines');
+const metroLineFilter=metroById('metroLineFilter');
+let savedMetroSelection=new Set(['__ALL__']);
+function syncMetroSelection(){savedMetroSelection=new Set([...metroSelect.selectedOptions].map(o=>o.value));if(!savedMetroSelection.size)savedMetroSelection.add('__ALL__')}
+function filterMetroOptions(){const query=metroLineFilter.value.trim().toLocaleLowerCase('ko');
+ for(const opt of metroSelect.options){const match=opt.value==='__ALL__'||opt.textContent.toLocaleLowerCase('ko').includes(query);opt.hidden=!match;opt.style.display=match?'':'none';}
+ // Keep selection unchanged even if filtered; list selection state is authoritative.
+}
+metroLineFilter.addEventListener('input',filterMetroOptions);
+metroById('metroAllLines').addEventListener('click',()=>{for(const o of metroSelect.options)o.selected=o.value==='__ALL__';renderMetro()});
+metroById('metroClearFilter').addEventListener('click',()=>{metroLineFilter.value='';filterMetroOptions();metroLineFilter.focus()});
+
+const allOption=document.createElement('option');allOption.value='__ALL__';allOption.textContent='전체 호선';allOption.selected=true;metroSelect.add(allOption);
+metroNames.forEach(name=>{let o=document.createElement('option');o.value=name;o.textContent=name;metroSelect.add(o)});
+const metroFutureLines=new Set(['동탄인덕원선','대장홍대선','신안산선','위례선','동북선','서부선','GTXB','GTXC','GTXD','동탄-1호선','동탄-2호선']);
+const metroDashedPairs=new Set([
+'GTXA|서울|삼성','GTXA|삼성|수서','GTXA|대곡|창릉','GTXA|연신내|창릉',
+'4호선|인덕원|과천정보타운','4호선|과천정보타운|정부과천청사',
+'1호선|서동탄|솔빛나루','1호선|솔빛나루|동탄']);
+const metroDashedRanges=[
+['7호선','청라국제도시','석남'],['7호선','장암','포천'],['7호선','덕정','옥정중앙'],
+['4호선','별내별가람','오남'],['경춘선','퇴계원','사릉'],['경의중앙선','도농','양정'],
+['경의중앙선','한국항공대','수색'],['9호선','중앙보훈병원','풍양'],
+['신분당선','용산','신사'],['신분당선','광교중앙','호매실'],
+['경강선','연수','판교'],['3호선','오금','하남시청'],
+['수인분당선','인하대','송도'],['서해선','원시','서화성'],
+['서해선','운정','일산'],['1호선','직산','두정'],['1호선','덕정','덕계'],
+['1호선','배방','온양온천'],['우이신설선','솔밭공원','방학']];
+function metroPair(line,a,b){metroDashedPairs.add(line+'|'+a+'|'+b);metroDashedPairs.add(line+'|'+b+'|'+a)}
+for(const [line,start,end] of metroDashedRanges){
+ const obj=metroLineData.find(d=>d.line===line);if(!obj)continue;
+ const graph=new Map();for(const e of obj.node||[]){const a=e.station?.[0]?.name,b=e.station?.[1]?.name;if(!a||!b)continue;if(!graph.has(a))graph.set(a,new Set());if(!graph.has(b))graph.set(b,new Set());graph.get(a).add(b);graph.get(b).add(a)}
+ if(!graph.has(start)||!graph.has(end))continue;
+ const q=[start],prev=new Map([[start,null]]);for(let j=0;j<q.length&&!prev.has(end);j++){for(const n of graph.get(q[j])||[]){if(!prev.has(n)){prev.set(n,q[j]);q.push(n)}}}
+ if(!prev.has(end))continue;let cursor=end;while(prev.get(cursor)!==null){const before=prev.get(cursor);metroPair(line,before,cursor);cursor=before}
+}
+for(const k of Array.from(metroDashedPairs)){const [line,a,b]=k.split('|');if(line&&a&&b)metroDashedPairs.add([line,b,a].join('|'))}
+const metroIndex=new Map();
+function addMetroStation(st,line){if(!st||!Number.isFinite(+st.lat)||!Number.isFinite(+st.lng))return;
+ const lat=+st.lat,lng=+st.lng,key=lat.toFixed(6)+'|'+lng.toFixed(6);
+ if(!metroIndex.has(key))metroIndex.set(key,{lat,lng,names:new Set(),lines:new Set()});
+ const v=metroIndex.get(key);if(st.name)v.names.add(st.name);if(line)v.lines.add(line);
+}
+metroStationData.forEach(st=>addMetroStation(st,st.line));
+metroLineData.forEach(d=>(d.node||[]).forEach(n=>(n.station||[]).forEach(st=>addMetroStation(st,d.line))));
+const metroAllStations=Array.from(metroIndex.values()).map(st=>({...st,names:[...st.names],lines:[...st.lines]}));
+function metroSelected(){const vals=[...metroSelect.selectedOptions].map(x=>x.value);return vals.includes('__ALL__')||!vals.length?new Set(metroNames):new Set(vals)}
+function metroStationHtml(st,selected){const badges=st.lines.filter(n=>selected.has(n)).map(n=>'<span class="metro-badge" style="background:'+escMetroColor(metroColors[n])+'">'+escaped(n)+'</span>').join('');return '<div class="metro-popup"><div class="m-name">'+escaped(st.names[0]||'역')+'</div>'+badges+'</div>'}
+function escMetroColor(color){return /^#[0-9A-Fa-f]{3,8}$/.test(color||'')?color:'#555555'}
+function metroSegmentKey(points){if(points.length<2)return '';const a=points[0].map(x=>(+x).toFixed(6)).join(','),b=points[points.length-1].map(x=>(+x).toFixed(6)).join(',');return a<b?a+'|'+b:b+'|'+a}
+const metroBuckets=new Map();
+metroLineData.forEach(obj=>(obj.node||[]).forEach(e=>{const via=e.via||[];if(via.length<2)return;
+ const from=e.station?.[0]?.name||'',to=e.station?.[1]?.name||'';
+ const segment={line:obj.line,color:obj.color||'#555',points:via,from,to,dashed:metroFutureLines.has(obj.line)||metroDashedPairs.has(obj.line+'|'+from+'|'+to)};
+ const key=(from&&to?[from,to].sort().join('|'):metroSegmentKey(via));
+ if(!metroBuckets.has(key))metroBuckets.set(key,[]);metroBuckets.get(key).push(segment);
+}));
+function metroOffset(points,offset){if(!offset)return points;const p=points.map(ll=>map.latLngToLayerPoint(ll));const result=p.map((v,i)=>{const prev=p[Math.max(i-1,0)],next=p[Math.min(i+1,p.length-1)];const dx=next.x-prev.x,dy=next.y-prev.y,mag=Math.hypot(dx,dy)||1;return map.layerPointToLatLng(L.point(v.x-dy/mag*offset,v.y+dx/mag*offset))});return result}
+let metroSegments=[];
+for(const group of metroBuckets.values()){const unique=[...new Map(group.map(g=>[g.line,g])).values()].sort((a,b)=>a.line.localeCompare(b.line,'ko'));unique.forEach((g,i)=>{g.offset=(i-(unique.length-1)/2)*3;metroSegments.push(g)})}
+function renderMetro(){const selected=metroSelected();metroRoutes.clearLayers();metroStations.clearLayers();metroLabels.clearLayers();
+ for(const seg of metroSegments){if(!selected.has(seg.line))continue;const coords=metroOffset(seg.points,seg.offset);L.polyline(coords,{pane:'metroRoutesPane',color:escMetroColor(seg.color),weight:seg.line.startsWith('GTX')?5:3.5,opacity:.92,dashArray:seg.dashed?'8 8':null,interactive:false}).addTo(metroRoutes)}
+ for(const st of metroAllStations){const active=st.lines.filter(l=>selected.has(l));if(!active.length)continue;
+ const color=escMetroColor(metroColors[active[0]]||'#444');const marker=L.circleMarker([st.lat,st.lng],{pane:'metroStationsPane',renderer:metroStationRenderer,className:'metro-station-hit',radius:4.5,color:'#fff',weight:1.5,fillColor:color,fillOpacity:1}).addTo(metroStations);
+ marker.bindTooltip(escaped(st.names[0]||'역'),{direction:'top'});marker.bindPopup(metroStationHtml(st,selected));
+ const label=L.marker([st.lat,st.lng],{pane:'metroTextPane',interactive:false,icon:L.divIcon({className:'metro-label',html:escaped(st.names[0]||''),iconSize:null})});label.addTo(metroLabels);
+ }
+ updateMetroLayers();
+ metroById('metroStatus').textContent=selected.size+'개 노선 선택 · '+metroStations.getLayers().length+'개 역 위치';
+}
+function updateMetroLayers(){const states=[['metroRoutesOn',metroRoutes],['metroStationsOn',metroStations]];for(const [id,layer] of states){if(metroById(id).checked){if(!map.hasLayer(layer))map.addLayer(layer)}else if(map.hasLayer(layer))map.removeLayer(layer)}
+ const show=metroById('metroLabelsOn').checked&&map.getZoom()>=11;if(show&&!map.hasLayer(metroLabels))map.addLayer(metroLabels);else if(!show&&map.hasLayer(metroLabels))map.removeLayer(metroLabels);
+}
+metroSelect.addEventListener('change',()=>{const vals=[...metroSelect.selectedOptions].map(x=>x.value);if(vals.includes('__ALL__')&&vals.length>1){metroSelect.options[0].selected=false}if(![...metroSelect.selectedOptions].length)metroSelect.options[0].selected=true;renderMetro()});
+['metroRoutesOn','metroStationsOn','metroLabelsOn'].forEach(id=>metroById(id).addEventListener('change',updateMetroLayers));
+map.on('zoomend',updateMetroLayers);
+const mq=metroById('metroQuery'),mr=metroById('metroResults');
+function metroGo(st){map.setView([st.lat,st.lng],Math.max(14,map.getZoom()));metroById('metroStationsOn').checked=true;updateMetroLayers();L.popup().setLatLng([st.lat,st.lng]).setContent(metroStationHtml(st,metroSelected())).openOn(map);mr.replaceChildren();mq.value=st.names[0]||''}
+mq.addEventListener('input',()=>{const q=mq.value.trim().toLowerCase();mr.replaceChildren();if(!q)return;let count=0;for(const st of metroAllStations){if(!st.names.some(n=>n.toLowerCase().includes(q)))continue;const b=document.createElement('button');b.type='button';b.textContent=st.names.join(' / ')+' · '+st.lines.join(', ');b.onclick=()=>metroGo(st);mr.appendChild(b);if(++count>=12)break;}if(!count)mr.textContent='검색 결과 없음'});
+mq.addEventListener('keydown',e=>{if(e.key==='Enter'){const b=mr.querySelector('button');if(b)b.click()}});
+renderMetro();
+
+
+})().catch(e=>{console.error("지도 실행 오류",e);alert("지도 실행 오류: "+e.message)});
+</script></body></html>
