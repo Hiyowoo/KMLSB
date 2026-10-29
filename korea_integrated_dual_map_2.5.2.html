@@ -1,0 +1,530 @@
+<!DOCTYPE html>
+
+<html lang="ko"><head><meta charset="utf-8"/><meta content="width=device-width, initial-scale=1" name="viewport"/><title>대한민국 4단계 행정경계 지도</title><link href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" rel="stylesheet"/><style>
+html,body,#map{height:100%;width:100%;padding:0;margin:0;font-family:Pretendard,Arial,sans-serif}#map{background:#e8eff4}.panel{position:absolute;z-index:1100;left:16px;top:16px;background:#fff;box-shadow:0 6px 28px #0002;border:1px solid #dfe5ed;border-radius:13px;padding:16px;width:300px;max-height:calc(100% - 50px);overflow:auto;box-sizing:border-box}.panel h2{font-size:16px;margin:0 0 5px}.sub{font-size:12px;color:#64748b;line-height:1.45;margin-bottom:13px}.check{display:flex;gap:8px;align-items:center;padding:9px 2px;font-size:13px;border-bottom:1px solid #f1f3f5;cursor:pointer}.check input{accent-color:#2563eb;width:16px;height:16px}.mark{width:32px;border-top:3px solid #000;display:inline-block}.small{font-size:11px;color:#718096;margin-left:auto}.block{font-size:12px;font-weight:700;display:block;margin:12px 0 5px}#search{box-sizing:border-box;width:100%;padding:9px;border:1px solid #ccd5df;border-radius:7px}#matches{max-height:150px;overflow:auto}#matches button{display:block;width:100%;padding:7px;text-align:left;border:0;background:white;border-bottom:1px solid #eee;cursor:pointer;font-size:12px}button{cursor:pointer}.bar{display:flex;gap:6px;margin-top:10px}.bar button{background:#f1f5f9;border:1px solid #ccd5df;border-radius:7px;padding:7px 9px}.status{color:#64748b;font-size:11px;margin-top:8px;line-height:1.5}.leaflet-tooltip.place{font-size:13px;font-weight:600;padding:6px 10px;background:white;border:1px solid #d4dce5;box-shadow:0 4px 13px #0002}.note{background:#f8fafc;border-radius:8px;padding:8px;font-size:11px;color:#526071;line-height:1.5;margin-top:12px}@media(max-width:650px){.panel{left:8px;top:8px;width:255px;padding:11px;max-height:60vh}}
+#map-credit{position:absolute;right:6px;bottom:2px;z-index:800;font:10px Arial,sans-serif;color:#666;background:rgba(255,255,255,.7);padding:1px 3px;pointer-events:none}
+.metro-head{margin:15px 0 5px;padding-top:12px;border-top:1px solid #e2e8f0;font-weight:750;font-size:13px}
+.metro-controls{display:flex;gap:12px;flex-wrap:wrap;margin:7px 0 9px;font-size:12px}
+.metro-controls label{display:flex;align-items:center;gap:4px;cursor:pointer}
+#metroLines{width:100%;height:116px;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:7px;font-size:12px;padding:4px;background:white}
+#metroQuery{width:100%;box-sizing:border-box;padding:9px;border-radius:7px;border:1px solid #cbd5e1;font-size:12px}
+#metroResults{max-height:140px;overflow:auto}
+#metroResults button{display:block;width:100%;text-align:left;padding:7px;background:white;border:none;border-bottom:1px solid #edf2f7;font-size:12px}
+.metro-hint{font-size:11px;color:#64748b;margin:5px 0 8px;line-height:1.45}
+.metro-popup .m-name{font-weight:750;font-size:14px;margin-bottom:5px}.metro-badge{display:inline-block;color:white;border-radius:12px;padding:3px 7px;margin:2px;font-size:11px;font-weight:650}
+.metro-label{font-weight:700;font-size:11px;white-space:nowrap;color:#111;background:rgba(255,255,255,.86);border:1px solid #e2e8f0;border-radius:4px;padding:1px 3px;box-shadow:0 1px 4px #0002}
+
+/* v2: sliding private map control panel */
+:root{--panel-width:330px;--panel-gap:14px;--accent:#2563eb}
+.panel{width:var(--panel-width);left:var(--panel-gap);top:14px;max-height:calc(100vh - 28px);padding:18px;border-radius:16px;box-shadow:0 14px 45px rgba(15,23,42,.18);transition:transform .23s ease,visibility .23s ease;scrollbar-width:thin;overscroll-behavior:contain}
+.panel-divider{border-top:2px solid #e4eaf4;margin:18px -18px 15px}
+#metroPanel .metro-head{font-weight:800;font-size:17px;border:none;padding:0;margin:0 0 8px;letter-spacing:-.5px;color:#0f172a}
+.panel h2{font-size:16px;letter-spacing:-.45px;margin-bottom:5px;color:#0f172a}
+.metro-controls{padding:10px 9px;gap:8px;border-radius:10px;background:#f3f7fc;display:flex;justify-content:space-between;margin-bottom:10px}
+.metro-controls label{white-space:nowrap;font-size:12px}.metro-controls input{accent-color:#2563eb}
+#metroLineFilter{width:100%;border:1px solid #cad5e3;border-radius:8px;padding:9px 10px;font-size:12px;box-sizing:border-box;margin:4px 0 6px;outline-color:#2563eb;background:#fff}
+#metroLines{height:138px;line-height:1.6;padding:5px;border-radius:9px}
+#metroLines option{padding:5px 7px;border-radius:4px}
+#panelToggle{position:absolute;z-index:1200;left:calc(var(--panel-width) + var(--panel-gap) + 8px);top:17px;min-height:42px;border:1px solid #d8e2ef;background:#fff;color:#1e293b;border-radius:11px;box-shadow:0 4px 16px #0002;padding:0 12px;font-size:13px;font-weight:750;cursor:pointer;transition:left .23s ease}
+#panelToggle:hover{background:#eff6ff}
+body.panel-collapsed .panel{transform:translateX(calc(-1 * (var(--panel-width) + 30px)));visibility:hidden;pointer-events:none}
+body.panel-collapsed #panelToggle{left:12px}
+#metroStatus{font-size:11px;color:#64748b}
+@media(max-width:650px){:root{--panel-width:min(315px,calc(100vw - 70px));--panel-gap:9px}.panel{top:8px;max-height:calc(100dvh - 16px);padding:13px}.panel-divider{margin-left:-13px;margin-right:-13px}#panelToggle{top:10px;padding:0 9px;font-size:12px}}
+
+/* Only actual station symbols capture input; transparent SVG canvas does not obscure district hover. */
+.leaflet-pane.leaflet-metroStationsPane-pane svg {pointer-events:none}
+.leaflet-pane.leaflet-metroStationsPane-pane .metro-station-hit {pointer-events:auto}
+
+/* Integrated map switching + selected-area inset */
+#canvasModeFrame{position:absolute;inset:0;height:100%;width:100%;border:0;z-index:2;display:block;visibility:hidden;pointer-events:none;background:#eaf2f7}
+body.canvas-mode #canvasModeFrame{visibility:visible;pointer-events:auto}body.canvas-mode #map{visibility:hidden}
+#sidebar,#panelToggle{z-index:1100!important}#map-credit{z-index:3}body.canvas-mode #map-credit{display:none}
+.map-mode-switch{position:sticky;top:-18px;margin:-18px -18px 15px;padding:14px 18px 13px;background:#fff;z-index:3;border-radius:16px 16px 0 0;border-bottom:1px solid #e2e8f0}
+.mode-title{font-size:12px;font-weight:750;color:#475569;margin:0 0 8px}
+.mode-options{display:flex;gap:3px;background:#e8eef7;padding:4px;border-radius:10px}
+.mode-options button{flex:1;min-width:0;font-weight:750;font-size:12px;padding:10px 7px;border:0;border-radius:7px;background:transparent;color:#475569;cursor:pointer}
+.mode-options button.active{background:#fff;color:#155cc0;box-shadow:0 1px 5px #1233}
+#insetBox{display:none;position:absolute;right:18px;bottom:26px;width:min(340px,calc(100vw - 32px));height:260px;border:1px solid #cbd5e1;background:#fff;box-shadow:0 8px 35px #152a4533;border-radius:14px;z-index:850;overflow:hidden;flex-direction:column}
+#insetBox.visible{display:flex}
+#insetBox header{height:42px;background:#fff;display:flex;align-items:center;gap:8px;padding:0 11px;border-bottom:1px solid #e2e8f0;font-size:12px;font-weight:800;color:#20354b;flex:0 0 auto}
+#insetName{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
+#insetClose{border:none;background:#edf2f8;border-radius:7px;padding:4px 8px;cursor:pointer}
+#insetCanvas{width:100%;height:100%;display:block;flex:1;min-height:0}
+#insetFooter{font:10px Arial,sans-serif;text-align:center;padding:3px 0;color:#718096;background:#fff}
+body.canvas-mode #insetBox{z-index:900}
+@media(max-width:650px){.map-mode-switch{top:-11px;margin:-11px -11px 14px;padding:12px 11px}#insetBox{right:8px;bottom:8px;width:min(270px,calc(100vw - 16px));height:210px}}
+
+/* Independent, resizable hierarchical mini map */
+#insetBox{display:flex!important;width:390px;height:325px;min-width:235px;min-height:210px;max-width:calc(100vw - 16px);max-height:calc(100vh - 20px);resize:both;overflow:hidden;right:17px;bottom:20px}
+#insetBox.minimized{height:45px!important;min-height:45px;resize:none}
+#insetBox.minimized #insetCanvas,#insetBox.minimized #insetFooter,#insetBox.minimized .mini-actions{display:none}
+#insetCanvas{cursor:pointer;touch-action:none}
+#insetBox .mini-actions{display:flex;align-items:center;gap:5px;padding:6px 8px;border-top:1px solid #e2e8f0;flex:0 0 auto}
+#insetBox .mini-actions button{flex:1;font-size:11px;font-weight:700;padding:7px 5px;background:#edf3fb;border:1px solid #d1dfed;color:#23405f;border-radius:7px;cursor:pointer}
+#insetBack{border:0;background:#eff5fb;border-radius:6px;padding:3px 7px;cursor:pointer}
+#insetFooter{font-size:10px;padding:4px;text-align:center}
+#selectionInfo{margin:14px 0 7px;background:#f1f4f8;border:1px solid #dce4ec;border-radius:10px;padding:11px 12px;font-size:12px;line-height:1.7;color:#334155}
+#selectionInfo strong{display:block;color:#172a45;margin-bottom:4px;font-size:12px}
+#selectionInfo .muted-info{color:#718096}
+@media(max-width:650px){#insetBox{width:270px;height:258px;right:8px;bottom:8px;min-width:210px}}
+
+/* Mini map: explicit resize handle, independent camera, zoom controls */
+#insetBox{resize:none!important;overflow:visible!important}
+#insetBox.minimized .mini-map-stage,#insetBox.minimized #miniResizeHandle{display:none!important}
+#insetBox .mini-map-stage{position:relative;flex:1;min-height:0;overflow:hidden;border-radius:0}
+#insetCanvas{width:100%;height:100%;cursor:crosshair;display:block}
+.mini-zoom-controls{position:absolute;right:9px;top:9px;display:flex;flex-direction:column;gap:5px;z-index:1}
+.mini-zoom-controls button{width:33px;height:33px;border-radius:7px;border:1px solid #c6d3e0;background:#fff;box-shadow:0 1px 5px #0002;font-size:20px;font-weight:bold;cursor:pointer}
+#miniResizeHandle{position:absolute;left:-8px;top:-8px;width:30px;height:30px;border-radius:8px;background:#2563eb;color:white;z-index:3;display:grid;place-items:center;cursor:nwse-resize;user-select:none;touch-action:none;box-shadow:0 1px 7px #0004;font-size:18px}
+#insetBox.minimized{overflow:hidden!important}
+
+#canvasModeFrame{touch-action:none;cursor:grab}
+body.canvas-mode #canvasModeFrame:active{cursor:grabbing}
+/* v2.5.0: keep back navigation clear of the upper-left resize grip */
+#insetBox header #insetBack{margin-left:22px;flex:0 0 auto}
+</style></head><body><div id="map"></div><canvas id="canvasModeFrame" aria-label="행정구역 Canvas 지도"></canvas><div aria-label="독립형 행정구역 미니 지도" id="insetBox" role="region"><header><button id="insetBack" title="이전 단계" type="button">‹</button><span id="insetName">대한민국 · 광역시·도</span><button id="insetClose" title="미니 지도 접기" type="button">−</button></header><div class="mini-map-stage"><canvas aria-label="단계별 행정구역과 지하철 노선 · 지역을 클릭해 다음 단계로" id="insetCanvas"></canvas><div class="mini-zoom-controls"><button id="insetZoomIn" type="button" title="미니 지도 확대">+</button><button id="insetZoomOut" type="button" title="미니 지도 축소">−</button></div></div><div id="insetFooter">지역에 마우스를 올려 지명 확인 · 클릭하여 하위 단계 탐색</div><div class="mini-actions"><button id="insetGo" type="button">현재 지역으로 이동</button><button id="insetReset" type="button">대한민국 초기화</button></div><div id="miniResizeHandle" title="끌어서 미니 지도 크기 변경" aria-label="미니 지도 크기 변경">⤢</div></div><button aria-controls="sidebar" aria-expanded="true" id="panelToggle" title="지도 설정 접기" type="button">☰  설정 닫기</button><aside class="panel" id="sidebar"><div class="map-mode-switch"><div class="mode-title">지도 표시 방식</div><div class="mode-options"><button aria-pressed="true" class="active" id="modeLeaflet" type="button">일반 지도</button><button aria-pressed="false" id="modeCanvas" type="button">행정구역 지도</button></div><div id="canvasSyncStatus" role="status" style="font-size:11px;color:#64748b;padding-top:7px">행정구역 지도 연결 대기 중</div></div><section id="metroPanel"><div class="metro-head">지하철 · 도시철도</div>
+<div class="metro-controls"><label><input checked="" id="metroRoutesOn" type="checkbox"/>노선 표시</label><label><input checked="" id="metroStationsOn" type="checkbox"/>역 표시</label><label><input id="metroLabelsOn" type="checkbox"/>역 이름 표시</label></div>
+<label class="block" for="metroLines">호선 선택</label><input aria-label="호선 필터 검색" id="metroLineFilter" placeholder="호선 검색 · 예: GTX, 7호선, 신분당선" type="search"/><select aria-label="호선 다중 선택" id="metroLines" multiple="" size="6"></select><div class="metro-inline-actions" style="display:flex;justify-content:space-between;gap:6px;margin:5px 0 2px"><button id="metroAllLines" style="padding:5px 8px;font-size:11px;background:#edf3fb;border:1px solid #dae4ee;border-radius:7px" type="button">전체 노선</button><button id="metroClearFilter" style="padding:5px 8px;font-size:11px;background:#edf3fb;border:1px solid #dae4ee;border-radius:7px" type="button">검색 초기화</button></div>
+<div class="metro-hint">호선 검색 후 목록에서 선택하세요. Ctrl/Shift로 복수 선택 가능 · 계획 구간은 점선 표시.</div>
+<label class="block" for="metroQuery">지하철역 검색</label><input id="metroQuery" placeholder="역명 검색 (예: 동탄, 서울)"/><div id="metroResults"></div>
+<div class="status" id="metroStatus"></div></section><div class="panel-divider"></div><h2>대한민국 행정구역 지도</h2><div class="sub">4단계 경계를 선택할 수 있습니다. 지명은 체크된 단계 중 가장 상세한 단계만 표시됩니다.</div>
+<label class="block">경계선 표시</label>
+<label class="check"><input checked="" id="t0" type="checkbox"/><span class="mark" style="border-width:4px;border-color:#2563eb"></span>광역시·도 <span class="small">파랑 4px</span></label>
+<label class="check"><input checked="" id="t1" type="checkbox"/><span class="mark" style="border-width:2px"></span>시·군 <span class="small">2px</span></label>
+<label class="check"><input id="t2" type="checkbox"/><span class="mark" style="border-width:1px"></span>시·군·구 <span class="small">1px</span></label>
+<label class="check"><input id="t3" type="checkbox"/><span class="mark" style="border-top:1.5px dashed #000"></span>읍·면·동 <span class="small">점선 1.5px</span></label>
+<label class="block">지역 검색</label><input id="search" placeholder="예: 화성시, 병점구, 반월동"/><div id="matches"></div>
+<div class="bar"><button id="reset">전국 보기</button><button id="clear">선택 해제</button></div><div class="status" id="status"></div><div id="selectionInfo"><strong>선택한 대상</strong><span class="muted-info">지도 또는 역을 선택하면 여기에 표시됩니다.</span></div><div class="note">시·군 레벨에서는 광역시 소속 군을 따로 표시하지 않고 광역시 전체를 하나로 표시합니다. 세종시는 중복 표기하지 않습니다. 광주광역시와 전라남도는 분리됩니다.</div></aside><div aria-label="지도 저작자 표시" id="map-credit">© OpenStreetMap contributors</div>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script><script>
+(async function initExternalMap(){
+ const sources = [
+   ['01_sido.geojson','features'],['02_sigun.geojson','features'],
+   ['03_sigungu.geojson','features'],['04_eupmyeondong.geojson','features'],
+   ['data-metro-line-2.1.0.json','DATA'],['data-metro-station-2.1.0.json','DATA']
+ ];
+ let loaded;
+ try {
+   loaded = await Promise.all(sources.map(async ([file, field]) => {
+     const r = await fetch('./' + file);
+     if (!r.ok) throw new Error(file+' HTTP '+r.status);
+     const json = await r.json();
+     if (!Array.isArray(json[field])) throw new Error(file+' 데이터 형식 오류');
+     return field === 'features' ? json : json.DATA;
+   }));
+ } catch(err) {
+   const box = document.createElement('div');
+   box.style.cssText='position:absolute;z-index:9999;top:20px;left:20px;right:20px;background:#fff4f4;color:#991b1b;border:1px solid #fda4af;border-radius:10px;padding:18px;font:14px/1.6 sans-serif;max-width:600px';
+   box.textContent='지도 데이터 로딩 실패: '+err.message+' — HTML과 6개 데이터 파일을 같은 폴더에 넣고 http://127.0.0.1:8765/ 등 로컬 서버로 여세요. 파일을 직접 열면 브라우저 보안으로 차단될 수 있습니다.';
+   document.body.appendChild(box);
+   console.error(err);return;
+ }
+ const [provinceData,cityData,sigData,dongData,metroLineData,metroStationData]=loaded;
+
+
+
+
+const $=id=>document.getElementById(id);
+const panelToggle=$('panelToggle');
+function setPanelOpen(open){document.body.classList.toggle('panel-collapsed',!open);panelToggle.setAttribute('aria-expanded',String(open));panelToggle.textContent=open?'‹  설정 닫기':'☰  설정 열기';panelToggle.title=open?'패널 숨기기':'패널 열기';}
+panelToggle.addEventListener('click',()=>setPanelOpen(document.body.classList.contains('panel-collapsed')));
+setPanelOpen(window.innerWidth>650);
+
+if(typeof L==='undefined') { $('status').textContent='Leaflet 로딩 실패: 인터넷 연결 확인'; throw Error('Leaflet unavailable'); }
+const map=L.map('map',{preferCanvas:true,zoomControl:false,attributionControl:false}).setView([36.3,127.8],7);L.control.zoom({position:'bottomright'}).addTo(map);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19}).addTo(map);
+for (let i=0;i<4;i++){map.createPane('boundary'+i);map.getPane('boundary'+i).style.zIndex=420-i*5;}
+map.createPane('selection');map.getPane('selection').style.zIndex=450;map.getPane('selection').style.pointerEvents='none';
+const datasets=[provinceData,cityData,sigData,dongData];
+const weights=[4,2,1,1.5];let active=-1;const escaped=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+let chosen=null;const highlight=L.geoJSON(null,{pane:'selection',interactive:false,style:{color:'#008ace',weight:3.5,fill:true,fillColor:'#00a3e0',fillOpacity:.20}}).addTo(map);
+function choose(f,zoom){if(chosen===f){clear();return false;}map.closePopup();highlight.clearLayers();chosen=f;highlight.addData(f);if(zoom){window.__lastMapClicked=null;const b=highlight.getBounds();if(b.isValid())map.fitBounds(b,{maxZoom:13,padding:[30,30]});}if(!ignoreChildEvents)selectionChanged('region',window.__lastMapClicked);return true;}
+function clear(){chosen=null;highlight.clearLayers();map.closePopup();if(!ignoreChildEvents)selectionChanged('region');}
+function nameOf(f){return String(f.properties?.display||f.properties?.A2||'지명 없음')}
+const layers=datasets.map((data,i)=>L.geoJSON(data,{pane:'boundary'+i,renderer:L.canvas({pane:'boundary'+i,padding:.5}),style:{color:i===0?'#2563eb':'#000',weight:weights[i],opacity:1,fill:true,fillColor:'#ffffff',fillOpacity:0,dashArray:i===3?'4 4':null},onEachFeature:(f,ly)=>{
+ ly.bindTooltip(escaped(nameOf(f)),{sticky:true,direction:'top',className:'place',opacity:.98});
+ ly.on('click',e=>{if(active!==i)return;L.DomEvent.stopPropagation(e);window.__lastMapClicked=e.latlng;if(choose(f,false)){L.popup({maxWidth:380}).setLatLng(e.latlng).setContent('<b>'+escaped(nameOf(f))+'</b>').openOn(map);}});
+}}));
+function sync(){
+ const enabled=[0,1,2,3].filter(i=>$('t'+i).checked);active=enabled.length?Math.max(...enabled):-1;
+ for(let i=0;i<4;i++){const pane=map.getPane('boundary'+i);pane.style.zIndex=i===active?'440':String(410-i*5);pane.style.pointerEvents=i===active?'auto':'none';}
+ // Add from bottom up so the finest selected geometry receives hover and click.
+ for(let i=0;i<4;i++)if(map.hasLayer(layers[i]))map.removeLayer(layers[i]);
+ for(let i=0;i<4;i++){layers[i].eachLayer(l=>{l.options.interactive=(i===active);if(l._path)l._path.style.pointerEvents=i===active?'auto':'none'});}
+ for(let i=3;i>=0;i--)if(enabled.includes(i))layers[i].addTo(map);
+ $('status').textContent='지역 경계에 마우스를 올리거나 클릭하여 지명 확인 · 현재 기준: '+(active===-1?'체크된 단계 없음':['광역시·도','시·군','시·군·구','읍·면·동'][active]);
+}
+[0,1,2,3].forEach(i=>$('t'+i).addEventListener('change',sync));sync();
+const bounds=layers[2].getBounds();if(bounds.isValid())map.fitBounds(bounds,{padding:[15,15]});
+$('reset').onclick=()=>{
+  if(!bounds.isValid())return;
+  if(modeCurrent==='canvas'){
+    // Canvas uses its own camera; Leaflet.fitBounds() only moves the hidden map.
+    // Fit the same nationwide boundary in the visible Canvas without altering selections.
+    cmFitBounds(bounds);
+  }else{
+    map.fitBounds(bounds,{padding:[15,15]});
+  }
+};
+$('clear').onclick=()=>{clear();$('search').value='';$('matches').replaceChildren()};
+const index=[];datasets.forEach((data,i)=>data.features.forEach(f=>index.push({name:nameOf(f),i,feature:f})));
+$('search').oninput=e=>{const q=e.target.value.trim().toLowerCase();$('matches').replaceChildren();if(!q)return;const matches=index.filter(x=>x.name.toLowerCase().includes(q)).slice(0,22);if(!matches.length){$('matches').textContent='검색 결과 없음';return;}for(const result of matches){const b=document.createElement('button');b.textContent=result.name+' ('+['광역시·도','시·군','시·군·구','읍·면·동'][result.i]+')';b.onclick=()=>{$('t'+result.i).checked=true;sync();const selected=choose(result.feature,true);$('search').value=selected?result.name:'';$('matches').replaceChildren()};$('matches').appendChild(b);}};
+
+
+/* --- 지하철 데이터: metro-future의 역/노선 및 예정 구간 규칙만 이식 --- */
+
+
+const metroById=id=>document.getElementById(id);
+map.createPane('metroRoutesPane');map.getPane('metroRoutesPane').style.zIndex=460;map.getPane('metroRoutesPane').style.pointerEvents='none';
+map.createPane('metroStationsPane');map.getPane('metroStationsPane').style.zIndex=480;map.getPane('metroStationsPane').style.pointerEvents='none';
+const metroStationRenderer=L.svg({pane:'metroStationsPane'});
+map.createPane('metroTextPane');map.getPane('metroTextPane').style.zIndex=490;map.getPane('metroTextPane').style.pointerEvents='none';
+const metroRoutes=L.layerGroup().addTo(map);
+const metroStations=L.layerGroup().addTo(map);
+const metroLabels=L.layerGroup();
+const metroColors=Object.fromEntries(metroLineData.map(x=>[x.line,x.color||'#555']));
+const metroNames=metroLineData.map(x=>x.line);
+const metroSelect=metroById('metroLines');
+const metroLineFilter=metroById('metroLineFilter');
+let savedMetroSelection=new Set(['__ALL__']);
+function syncMetroSelection(){savedMetroSelection=new Set([...metroSelect.selectedOptions].map(o=>o.value));if(!savedMetroSelection.size)savedMetroSelection.add('__ALL__')}
+function filterMetroOptions(){const query=metroLineFilter.value.trim().toLocaleLowerCase('ko');
+ for(const opt of metroSelect.options){const match=opt.value==='__ALL__'||opt.textContent.toLocaleLowerCase('ko').includes(query);opt.hidden=!match;opt.style.display=match?'':'none';}
+ // Keep selection unchanged even if filtered; list selection state is authoritative.
+}
+metroLineFilter.addEventListener('input',filterMetroOptions);
+metroById('metroAllLines').addEventListener('click',()=>{for(const o of metroSelect.options)o.selected=o.value==='__ALL__';renderMetro()});
+metroById('metroClearFilter').addEventListener('click',()=>{metroLineFilter.value='';filterMetroOptions();metroLineFilter.focus()});
+
+const allOption=document.createElement('option');allOption.value='__ALL__';allOption.textContent='전체 호선';allOption.selected=true;metroSelect.add(allOption);
+metroNames.forEach(name=>{let o=document.createElement('option');o.value=name;o.textContent=name;metroSelect.add(o)});
+const metroFutureLines=new Set(['동탄인덕원선','대장홍대선','신안산선','위례선','동북선','서부선','GTXB','GTXC','GTXD','동탄-1호선','동탄-2호선']);
+const metroDashedPairs=new Set([
+'GTXA|서울|삼성','GTXA|삼성|수서','GTXA|대곡|창릉','GTXA|연신내|창릉',
+'4호선|인덕원|과천정보타운','4호선|과천정보타운|정부과천청사',
+'1호선|서동탄|솔빛나루','1호선|솔빛나루|동탄']);
+const metroDashedRanges=[
+['7호선','청라국제도시','석남'],['7호선','장암','포천'],['7호선','덕정','옥정중앙'],
+['4호선','별내별가람','오남'],['경춘선','퇴계원','사릉'],['경의중앙선','도농','양정'],
+['경의중앙선','한국항공대','수색'],['9호선','중앙보훈병원','풍양'],
+['신분당선','용산','신사'],['신분당선','광교중앙','호매실'],
+['경강선','연수','판교'],['3호선','오금','하남시청'],
+['수인분당선','인하대','송도'],['서해선','원시','서화성'],
+['서해선','운정','일산'],['1호선','직산','두정'],['1호선','덕정','덕계'],
+['1호선','배방','온양온천'],['우이신설선','솔밭공원','방학']];
+function metroPair(line,a,b){metroDashedPairs.add(line+'|'+a+'|'+b);metroDashedPairs.add(line+'|'+b+'|'+a)}
+for(const [line,start,end] of metroDashedRanges){
+ const obj=metroLineData.find(d=>d.line===line);if(!obj)continue;
+ const graph=new Map();for(const e of obj.node||[]){const a=e.station?.[0]?.name,b=e.station?.[1]?.name;if(!a||!b)continue;if(!graph.has(a))graph.set(a,new Set());if(!graph.has(b))graph.set(b,new Set());graph.get(a).add(b);graph.get(b).add(a)}
+ if(!graph.has(start)||!graph.has(end))continue;
+ const q=[start],prev=new Map([[start,null]]);for(let j=0;j<q.length&&!prev.has(end);j++){for(const n of graph.get(q[j])||[]){if(!prev.has(n)){prev.set(n,q[j]);q.push(n)}}}
+ if(!prev.has(end))continue;let cursor=end;while(prev.get(cursor)!==null){const before=prev.get(cursor);metroPair(line,before,cursor);cursor=before}
+}
+for(const k of Array.from(metroDashedPairs)){const [line,a,b]=k.split('|');if(line&&a&&b)metroDashedPairs.add([line,b,a].join('|'))}
+const metroIndex=new Map();
+function addMetroStation(st,line){if(!st||!Number.isFinite(+st.lat)||!Number.isFinite(+st.lng))return;
+ const lat=+st.lat,lng=+st.lng,key=lat.toFixed(6)+'|'+lng.toFixed(6);
+ if(!metroIndex.has(key))metroIndex.set(key,{lat,lng,names:new Set(),lines:new Set()});
+ const v=metroIndex.get(key);if(st.name)v.names.add(st.name);if(line)v.lines.add(line);
+}
+metroStationData.forEach(st=>addMetroStation(st,st.line));
+metroLineData.forEach(d=>(d.node||[]).forEach(n=>(n.station||[]).forEach(st=>addMetroStation(st,d.line))));
+const metroAllStations=Array.from(metroIndex.values()).map(st=>({...st,names:[...st.names],lines:[...st.lines]}));
+function metroSelected(){const vals=[...metroSelect.selectedOptions].map(x=>x.value);return vals.includes('__ALL__')||!vals.length?new Set(metroNames):new Set(vals)}
+function metroStationHtml(st,selected){const badges=st.lines.filter(n=>selected.has(n)).map(n=>'<span class="metro-badge" style="background:'+escMetroColor(metroColors[n])+'">'+escaped(n)+'</span>').join('');return '<div class="metro-popup"><div class="m-name">'+escaped(st.names[0]||'역')+'</div>'+badges+'</div>'}
+function escMetroColor(color){return /^#[0-9A-Fa-f]{3,8}$/.test(color||'')?color:'#555555'}
+function metroSegmentKey(points){if(points.length<2)return '';const a=points[0].map(x=>(+x).toFixed(6)).join(','),b=points[points.length-1].map(x=>(+x).toFixed(6)).join(',');return a<b?a+'|'+b:b+'|'+a}
+const metroBuckets=new Map();
+metroLineData.forEach(obj=>(obj.node||[]).forEach(e=>{const via=e.via||[];if(via.length<2)return;
+ const from=e.station?.[0]?.name||'',to=e.station?.[1]?.name||'';
+ const segment={line:obj.line,color:obj.color||'#555',points:via,from,to,dashed:metroFutureLines.has(obj.line)||metroDashedPairs.has(obj.line+'|'+from+'|'+to)};
+ const key=(from&&to?[from,to].sort().join('|'):metroSegmentKey(via));
+ if(!metroBuckets.has(key))metroBuckets.set(key,[]);metroBuckets.get(key).push(segment);
+}));
+function metroOffset(points,offset){if(!offset)return points;const p=points.map(ll=>map.latLngToLayerPoint(ll));const result=p.map((v,i)=>{const prev=p[Math.max(i-1,0)],next=p[Math.min(i+1,p.length-1)];const dx=next.x-prev.x,dy=next.y-prev.y,mag=Math.hypot(dx,dy)||1;return map.layerPointToLatLng(L.point(v.x-dy/mag*offset,v.y+dx/mag*offset))});return result}
+let metroSegments=[];
+for(const group of metroBuckets.values()){const unique=[...new Map(group.map(g=>[g.line,g])).values()].sort((a,b)=>a.line.localeCompare(b.line,'ko'));unique.forEach((g,i)=>{g.offset=(i-(unique.length-1)/2)*3;metroSegments.push(g)})}
+function renderMetro(){const selected=metroSelected();metroRoutes.clearLayers();metroStations.clearLayers();metroLabels.clearLayers();
+ for(const seg of metroSegments){if(!selected.has(seg.line))continue;const coords=metroOffset(seg.points,seg.offset);L.polyline(coords,{pane:'metroRoutesPane',color:escMetroColor(seg.color),weight:seg.line.startsWith('GTX')?5:3.5,opacity:.92,dashArray:seg.dashed?'8 8':null,interactive:false}).addTo(metroRoutes)}
+ for(const st of metroAllStations){const active=st.lines.filter(l=>selected.has(l));if(!active.length)continue;
+ const color=escMetroColor(metroColors[active[0]]||'#444');const marker=L.circleMarker([st.lat,st.lng],{pane:'metroStationsPane',renderer:metroStationRenderer,className:'metro-station-hit',radius:4.5,color:'#fff',weight:1.5,fillColor:color,fillOpacity:1}).addTo(metroStations);
+ marker.bindTooltip(escaped(st.names[0]||'역'),{direction:'top'});marker.bindPopup(metroStationHtml(st,selected));marker.on('click',()=>mirrorStation(st));
+ const label=L.marker([st.lat,st.lng],{pane:'metroTextPane',interactive:false,icon:L.divIcon({className:'metro-label',html:escaped(st.names[0]||''),iconSize:null})});label.addTo(metroLabels);
+ }
+ updateMetroLayers();
+ metroById('metroStatus').textContent=selected.size+'개 노선 선택 · '+metroStations.getLayers().length+'개 역 위치';
+}
+function updateMetroLayers(){const states=[['metroRoutesOn',metroRoutes],['metroStationsOn',metroStations]];for(const [id,layer] of states){if(metroById(id).checked){if(!map.hasLayer(layer))map.addLayer(layer)}else if(map.hasLayer(layer))map.removeLayer(layer)}
+ const show=metroById('metroLabelsOn').checked&&map.getZoom()>=11;if(show&&!map.hasLayer(metroLabels))map.addLayer(metroLabels);else if(!show&&map.hasLayer(metroLabels))map.removeLayer(metroLabels);
+}
+metroSelect.addEventListener('change',()=>{const vals=[...metroSelect.selectedOptions].map(x=>x.value);if(vals.includes('__ALL__')&&vals.length>1){metroSelect.options[0].selected=false}if(![...metroSelect.selectedOptions].length)metroSelect.options[0].selected=true;renderMetro()});
+['metroRoutesOn','metroStationsOn','metroLabelsOn'].forEach(id=>metroById(id).addEventListener('change',updateMetroLayers));
+map.on('zoomend',updateMetroLayers);
+const mq=metroById('metroQuery'),mr=metroById('metroResults');
+function metroGo(st){mirrorStation(st);map.setView([st.lat,st.lng],Math.max(14,map.getZoom()));metroById('metroStationsOn').checked=true;updateMetroLayers();L.popup().setLatLng([st.lat,st.lng]).setContent(metroStationHtml(st,metroSelected())).openOn(map);mr.replaceChildren();mq.value=st.names[0]||''}
+mq.addEventListener('input',()=>{const q=mq.value.trim().toLowerCase();mr.replaceChildren();if(!q)return;let count=0;for(const st of metroAllStations){if(!st.names.some(n=>n.toLowerCase().includes(q)))continue;const b=document.createElement('button');b.type='button';b.textContent=st.names.join(' / ')+' · '+st.lines.join(', ');b.onclick=()=>metroGo(st);mr.appendChild(b);if(++count>=12)break;}if(!count)mr.textContent='검색 결과 없음'});
+mq.addEventListener('keydown',e=>{if(e.key==='Enter'){const b=mr.querySelector('button');if(b)b.click()}});
+renderMetro();
+
+
+/* ========= Shared canvas + Leaflet state and clipped regional inset ========= */
+/* v2.5.0: both renderers share ONE document and ONE set of controls; no iframe. */
+const secondFrame=$('canvasModeFrame');
+const cctx=secondFrame.getContext('2d');
+let modeCurrent='leaflet',ignoreChildEvents=false,canvasReady=true,suppressCanvasAutoFit=false;
+const merc=(lon,lat)=>[+lon,Math.log(Math.tan(Math.PI/4+Math.max(-85,Math.min(85,+lat))*Math.PI/360))*180/Math.PI];
+const invMerc=y=>(2*Math.atan(Math.exp(y*Math.PI/180))-Math.PI/2)*180/Math.PI;
+let cw=1,ch=1,cscale=1,cx=0,cy=0,cminScale=.1,crender=0,cdpr=1;
+let canvasHover=null,canvasHitFeatures=[];
+const cBBoxCache=new WeakMap();
+function featureBounds(f){let b=cBBoxCache.get(f);if(!b){b=miniBBox(f);cBBoxCache.set(f,b)}return b}
+function resizeMainCanvas(){
+ const r=secondFrame.getBoundingClientRect();if(r.width<2||r.height<2)return;
+ const centerX=cw/2-cx,centerY=ch/2-cy;
+ cw=r.width;ch=r.height;cdpr=Math.min(devicePixelRatio||1,2);
+ secondFrame.width=Math.round(cw*cdpr);secondFrame.height=Math.round(ch*cdpr);
+ cx=cw/2-centerX;cy=ch/2-centerY;
+ scheduleCanvasDraw();
+}
+function cPoint(p){return [cx+cscale*p[0],cy-cscale*p[1]]}
+function cPath(f){cctx.beginPath();for(const ring of miniRings(f)){
+ if(!ring.length)continue;let [x,y]=cPoint(ring[0]);cctx.moveTo(x,y);let lastX=x,lastY=y;
+ for(let j=1;j<ring.length;j++){[x,y]=cPoint(ring[j]);if(j<ring.length-1&&Math.abs(x-lastX)+Math.abs(y-lastY)<.75)continue;cctx.lineTo(x,y);lastX=x;lastY=y}cctx.closePath();
+ }}
+function cmFitBounds(bound){
+ if(!bound||!bound.isValid())return false;
+ resizeMainCanvas();if(cw<2||ch<2)return false;
+ const a=merc(bound.getWest(),bound.getSouth()),b=merc(bound.getEast(),bound.getNorth());
+ if(b[0]<=a[0]||b[1]<=a[1])return false;
+ cscale=Math.min(cw*.87/(b[0]-a[0]),ch*.87/(b[1]-a[1]));
+ cminScale=cscale;
+ cx=cw/2-cscale*(a[0]+b[0])/2;cy=ch/2+cscale*(a[1]+b[1])/2;
+ scheduleCanvasDraw();return true;
+}
+function cmBounds(){if(!cw||!ch||!cscale)return null;
+ return L.latLngBounds([invMerc((cy-ch)/cscale),-cx/cscale],[invMerc(cy/cscale),(cw-cx)/cscale]);
+}
+function cmFocusStation(st){if(!st)return;
+ if(modeCurrent==='canvas'){resizeMainCanvas();cscale=Math.max(cscale,80);const p=merc(st.lng,st.lat);cx=cw/2-cscale*p[0];cy=ch/2+cscale*p[1];scheduleCanvasDraw()}
+}
+function childSend(type,extra={}){
+ if(type==='set-bounds'&&extra.bounds){const b=extra.bounds;cmFitBounds(L.latLngBounds([b[0],b[1]],[b[2],b[3]]))}
+ if(type==='focus-region'&&chosen&&modeCurrent==='canvas'&&!suppressCanvasAutoFit)cmFitBounds(L.geoJSON(chosen).getBounds());
+ if(type==='focus-station'){const st=metroAllStations.find(s=>s.names.includes(extra.name));if(st)cmFocusStation(st)}
+ if(type==='clear-selection')scheduleCanvasDraw();
+ if(type==='get-bounds'){const b=cmBounds();if(b?.isValid())map.fitBounds(b,{animate:false})}
+}
+function sharedSettings(){const selected=[...metroSelect.selectedOptions].map(x=>x.value);
+ return {levels:[0,1,2,3].filter(i=>$('t'+i).checked),lines:selected.includes('__ALL__')?['ALL']:selected.length?selected:['ALL'],routes:$('metroRoutesOn').checked,stations:$('metroStationsOn').checked,labels:$('metroLabelsOn').checked};
+}
+function updateCanvasSyncStatus(message,ok=true){const el=$('canvasSyncStatus');if(el){el.textContent='행정구역 지도: '+message;el.style.color=ok?'#16804a':'#ad5c16'}}
+function syncCanvasDirect(){scheduleCanvasDraw();updateCanvasSyncStatus('공통 설정 직접 적용',true);return true}
+function pushSettings(){syncCanvasDirect();miniUpdate()}
+function scheduleCanvasDraw(){if(crender)return;crender=requestAnimationFrame(()=>{crender=0;drawMainCanvas()})}
+function drawMainCanvas(){if(modeCurrent!=='canvas'||cw<2||ch<2)return;
+ cctx.setTransform(cdpr,0,0,cdpr,0,0);cctx.fillStyle='#eaf2f7';cctx.fillRect(0,0,cw,ch);
+ const s=sharedSettings(), chosenSet=metroSelected();
+ const view=[-cx/cscale,(cy-ch)/cscale,(cw-cx)/cscale,cy/cscale];
+ const visible=f=>{let b=featureBounds(f);return !(b[2]<view[0]||b[0]>view[2]||b[3]<view[1]||b[1]>view[3])};
+ const active=s.levels.length?Math.max(...s.levels):-1;
+ if(active>=0){for(const f of datasets[active].features){if(!visible(f))continue;cPath(f);cctx.fillStyle='#dcebdd';cctx.fill('evenodd')}}
+ for(const level of s.levels){cctx.strokeStyle=level===0?'#2563eb':'#526878';cctx.lineWidth=level===0?3.1:level===1?1.7:level===2?1.0:.7;cctx.setLineDash(level===3?[3,3]:[]);
+ for(const f of datasets[level].features){if(!visible(f))continue;cPath(f);cctx.stroke()}}cctx.setLineDash([]);
+ for(const f of [canvasHover,chosen]){if(!f||!visible(f))continue;cPath(f);cctx.fillStyle=f===chosen?'rgba(0,163,224,.25)':'rgba(35,150,85,.16)';cctx.fill('evenodd');cctx.lineWidth=f===chosen?2.8:1.6;cctx.strokeStyle=f===chosen?'#008ace':'#16a34a';cctx.stroke()}
+ if(s.routes){for(const seg of metroSegments){if(!chosenSet.has(seg.line))continue;cctx.beginPath();let started=false;for(const p of seg.points){if(!Array.isArray(p)||p.length<2)continue;const [x,y]=cPoint(merc(p[1],p[0]));if(!started){cctx.moveTo(x,y);started=true}else cctx.lineTo(x,y)}if(!started)continue;cctx.strokeStyle=escMetroColor(seg.color);cctx.lineWidth=seg.line.startsWith('GTX')?4:2.6;cctx.setLineDash(seg.dashed?[7,5]:[]);cctx.stroke()}cctx.setLineDash([])}
+ if(s.stations){const printed=[];for(const st of metroAllStations){if(!st.lines.some(l=>chosenSet.has(l)))continue;let p=merc(st.lng,st.lat),[x,y]=cPoint(p);if(x<-12||y<-12||x>cw+12||y>ch+12)continue;cctx.beginPath();cctx.arc(x,y,3.8,0,Math.PI*2);cctx.fillStyle='#fff';cctx.fill();cctx.strokeStyle=escMetroColor(metroColors[st.lines.find(l=>chosenSet.has(l))]||'#555');cctx.lineWidth=2;cctx.stroke();if(s.labels&&cscale>25&&printed.every(q=>Math.hypot(x-q[0],y-q[1])>45)){const txt=st.names[0]||'';cctx.font='11px sans-serif';let tw=cctx.measureText(txt).width;cctx.fillStyle='#ffffffeb';cctx.fillRect(x+5,y-16,tw+8,15);cctx.fillStyle='#172435';cctx.fillText(txt,x+9,y-4);printed.push([x,y])}}}
+}
+function canvasScreen(e){const r=secondFrame.getBoundingClientRect();return [e.clientX-r.left,e.clientY-r.top]}
+function canvasHit(e){const [x,y]=canvasScreen(e),s=sharedSettings(),selected=metroSelected();
+ if(s.stations){for(const st of metroAllStations){if(!st.lines.some(l=>selected.has(l)))continue;const [xx,yy]=cPoint(merc(st.lng,st.lat));if(Math.abs(x-xx)<8&&Math.abs(y-yy)<8&&Math.hypot(x-xx,y-yy)<9)return {kind:'station',obj:st}}}
+ const level=s.levels.length?Math.max(...s.levels):-1;if(level<0)return null;
+ const geoX=(x-cx)/cscale,geoY=(cy-y)/cscale;
+ const fs=datasets[level].features;for(let i=fs.length-1;i>=0;i--){const f=fs[i],b=featureBounds(f);if(geoX<b[0]||geoX>b[2]||geoY<b[1]||geoY>b[3])continue;cPath(f);if(cctx.isPointInPath(x,y,'evenodd'))return {kind:'region',obj:f,coords:{lat:invMerc(geoY),lng:geoX}}}return null;
+}
+let canvasDrag=null;
+secondFrame.addEventListener('pointerdown',e=>{secondFrame.setPointerCapture(e.pointerId);canvasDrag={x:e.clientX,y:e.clientY,moved:false}});
+secondFrame.addEventListener('pointermove',e=>{if(canvasDrag){const dx=e.clientX-canvasDrag.x,dy=e.clientY-canvasDrag.y;if(Math.abs(dx)+Math.abs(dy)>2)canvasDrag.moved=true;cx+=dx;cy+=dy;canvasDrag.x=e.clientX;canvasDrag.y=e.clientY;scheduleCanvasDraw()}else if(modeCurrent==='canvas'){const hit=canvasHit(e);const f=hit?.kind==='region'?hit.obj:null;if(f!==canvasHover){canvasHover=f;scheduleCanvasDraw()}secondFrame.title=hit?(hit.kind==='station'?hit.obj.names[0]:nameOf(hit.obj)):''}});
+secondFrame.addEventListener('pointerup',e=>{if(!canvasDrag)return;const moved=canvasDrag.moved;canvasDrag=null;if(moved)return;const hit=canvasHit(e);if(!hit)return;
+ if(hit.kind==='region'){if(chosen===hit.obj){origClear();setSelectionInfo(null,null)}else{
+  // A direct Canvas click selects/highlights only; it must never change camera position.
+  suppressCanvasAutoFit=true;
+  try{origChoose(hit.obj,false)}finally{suppressCanvasAutoFit=false}
+  setSelectionInfo('region',hit.obj,hit.coords)
+ }}
+ else {const st=hit.obj;setSelectionInfo('station',{name:st.names[0],lines:st.lines,lat:st.lat,lng:st.lng});map.setView([st.lat,st.lng],Math.max(14,map.getZoom()))}scheduleCanvasDraw()});
+secondFrame.addEventListener('pointercancel',()=>canvasDrag=null);
+secondFrame.addEventListener('wheel',e=>{e.preventDefault();const [x,y]=canvasScreen(e),factor=e.deltaY<0?1.25:.8;const next=Math.max(.05,Math.min(10000,cscale*factor)),ratio=next/cscale;cx=x+(cx-x)*ratio;cy=y+(cy-y)*ratio;cscale=next;scheduleCanvasDraw()},{passive:false});
+new ResizeObserver(()=>{if(modeCurrent==='canvas')resizeMainCanvas()}).observe(secondFrame);
+for(let i=0;i<4;i++)$('t'+i).addEventListener('change',pushSettings);
+metroSelect.addEventListener('change',pushSettings);
+['metroRoutesOn','metroStationsOn','metroLabelsOn'].forEach(id=>$(id).addEventListener('change',pushSettings));
+$('metroAllLines').addEventListener('click',()=>setTimeout(pushSettings,0));
+function setMapMode(mode){if(mode===modeCurrent)return;
+ if(mode==='canvas'){
+   document.body.classList.add('canvas-mode');modeCurrent=mode;resizeMainCanvas();
+   const current=map.getBounds();cmFitBounds(current);if(chosen)cmFitBounds(L.geoJSON(chosen).getBounds());
+   else if(currentSelection?.kind==='station')cmFocusStation(currentSelection.obj);
+   pushSettings();
+ }else{
+   const b=cmBounds();modeCurrent=mode;document.body.classList.remove('canvas-mode');
+   requestAnimationFrame(()=>{map.invalidateSize();if(b?.isValid())map.fitBounds(b,{animate:false})});
+ }
+ $('modeLeaflet').classList.toggle('active',mode==='leaflet');$('modeCanvas').classList.toggle('active',mode==='canvas');
+ $('modeLeaflet').setAttribute('aria-pressed',String(mode==='leaflet'));$('modeCanvas').setAttribute('aria-pressed',String(mode==='canvas'));
+ miniUpdate();
+}
+$('modeLeaflet').onclick=()=>setMapMode('leaflet');$('modeCanvas').onclick=()=>setMapMode('canvas');
+updateCanvasSyncStatus('공통 설정 직접 적용',true);
+const origChoose=choose,origClear=clear;
+let currentSelection=null;
+const infoBox=$('selectionInfo');
+function infoHTML(kind,obj,clicked){
+ const clean=escaped;
+ if(kind==='station'){
+  const lines=Array.isArray(obj.lines)?obj.lines:[obj.line].filter(Boolean);
+  return '<strong>선택한 대상 · 지하철역</strong><b>'+clean(obj.name||obj.names?.[0]||'역')+'</b><div>호선: '+clean(lines.join(', ')||'-')+'</div><div>위도: '+Number(obj.lat).toFixed(6)+' · 경도: '+Number(obj.lng).toFixed(6)+'</div>';
+ }
+ const p=obj.properties||{},ll=clicked&&Number.isFinite(+clicked.lat)&&Number.isFinite(+clicked.lng)?clicked:null;
+ return '<strong>선택한 대상 · 행정구역</strong><b>'+clean(nameOf(obj))+'</b><div>행정구역 코드: '+clean(String(p.A1||p.A4||p.code||'-'))+'</div><div>클릭 좌표: '+(ll?Number(ll.lat).toFixed(6)+', '+Number(ll.lng).toFixed(6):'검색/연동 선택 (클릭 좌표 없음)')+'</div>';
+}
+function setSelectionInfo(kind,obj,clicked){currentSelection=obj?{kind,obj,clicked}:null;infoBox.innerHTML=obj?infoHTML(kind,obj,clicked):'<strong>선택한 대상</strong><span class="muted-info">지도 또는 역을 선택하면 여기에 표시됩니다.</span>'}
+function locateFeature(data){for(let i=0;i<datasets.length;i++)for(const f of datasets[i].features){
+ const p=f.properties||{};if((data.code&&String(p.A1||p.A4||'')===String(data.code)&&i===data.level)||(i===data.level&&nameOf(f)===data.name))return {f,level:i};
+ }return null}
+function selectionChanged(kind='region',clicked=null){
+ if(kind==='region'){
+   if(chosen){setSelectionInfo('region',chosen,clicked);let p=chosen.properties||{};const level=datasets.findIndex(d=>d.features.includes(chosen));childSend('focus-region',{name:nameOf(chosen),code:String(p.A1||p.A4||''),level});}
+   else {setSelectionInfo(null,null);childSend('clear-selection')}
+ }
+}
+// Child receives sidebar-initiated station searches too.
+function mirrorStation(st){if(!st)return;setSelectionInfo('station',{name:st.names?.[0]||st.name,lines:st.lines||[],lat:st.lat,lng:st.lng});if(!ignoreChildEvents)childSend('focus-station',{name:st.names?.[0]||st.name})}
+const insetCanvas=$('insetCanvas'),insetBox=$('insetBox');
+let miniFeature=null,miniLevel=-1,miniHover=null,miniHit=[],miniTransform=null,miniRaf=0,miniZoom=1,miniPanX=0,miniPanY=0;
+const miniPI=Math.PI/180;
+const miniProj=(lon,lat)=>[lon,Math.log(Math.tan(Math.PI/4+Math.max(-85,Math.min(85,lat))*miniPI/2))/miniPI];
+const miniGeomCache=new WeakMap();function miniRings(feature){if(feature&&miniGeomCache.has(feature))return miniGeomCache.get(feature);const g=feature?.geometry;if(!g)return [];const polys=g.type==='Polygon'?[g.coordinates]:g.type==='MultiPolygon'?g.coordinates:[];const rings=polys.flatMap(p=>p.map(r=>r.map(c=>miniProj(c[0],c[1]))));miniGeomCache.set(feature,rings);return rings}
+function miniBBox(feature){let b=[Infinity,Infinity,-Infinity,-Infinity];for(const r of miniRings(feature))for(const [x,y] of r){b[0]=Math.min(b[0],x);b[1]=Math.min(b[1],y);b[2]=Math.max(b[2],x);b[3]=Math.max(b[3],y)}return b}
+function miniUpdate(){if(miniRaf)return;miniRaf=requestAnimationFrame(()=>{miniRaf=0;miniDraw()})}
+// Preserve the actual navigation path. Bounding-box centers can lie offshore
+// for archipelagos such as Ongjin-gun, so reverse navigation must not guess parents.
+let miniTrail=[];
+function miniSet(feature,level,{preserveTrail=false}={}){
+ if(!preserveTrail)miniTrail=[];
+ miniFeature=feature;miniLevel=level;miniHover=null;miniZoom=1;miniPanX=0;miniPanY=0;miniUpdate();
+}
+$('insetReset').onclick=()=>miniSet(null,-1);
+$('insetBack').onclick=()=>{
+ if(miniTrail.length){const prev=miniTrail.pop();miniSet(prev.feature,prev.level,{preserveTrail:true});}
+ else miniSet(null,-1);
+};
+// Child-to-parent code relationships are authoritative for the supplied 4 GeoJSONs.
+// A polygon bounding-box midpoint is NOT a valid containment test: islands and
+// concave districts frequently have their midpoint over the sea or outside the polygon.
+function miniBelongsToParent(parent,child,level){
+ if(!parent)return true;
+ const pp=parent.properties||{},cp=child.properties||{};
+ const parentCode=String(pp.A1||pp.A4||'').trim();
+ const childCode=String(cp.A1||cp.A4||'').trim();
+ if(level===0){
+  const province=parentCode.slice(0,2);
+  if(/^\d{2}$/.test(province)&&/^\d{2}/.test(childCode))return childCode.startsWith(province);
+ }
+ if(level===1){
+  // City group codes may contain a comma-separated list of 5-digit district codes.
+  // Whole-metropolitan-area entries use a 2-digit code (e.g. Busan=26).
+  const keys=parentCode.split(',').map(x=>x.trim()).filter(Boolean);
+  if(keys.some(k=>k===childCode || (k.length===2&&childCode.startsWith(k))))return true;
+  if(keys.length&&/^\d/.test(childCode))return false;
+ }
+ if(level===2){
+  const p5=parentCode.slice(0,5);
+  const childParent=String(cp.A4||'');
+  if(p5.length===5&&/^\d{5}$/.test(p5))return childParent===p5 || childCode.startsWith(p5);
+ }
+ // Fallback for unexpected codes: test representative points from EACH polygon,
+ // not a single bounding rectangle center. This handles disconnected islands.
+ const geom=child.geometry;
+ const polys=geom?.type==='Polygon'?[geom.coordinates]:geom?.type==='MultiPolygon'?geom.coordinates:[];
+ for(const poly of polys){
+  const outer=poly[0]||[];
+  for(let i=0;i<outer.length;i+=Math.max(1,Math.floor(outer.length/12))){
+   const [lon,lat]=outer[i],pt=miniProj(lon,lat);
+   if(miniContains(parent,pt[0],pt[1]))return true;
+  }
+ }
+ return false;
+}
+function navigateCanvasToBounds(b){return cmFitBounds(b)}
+$('insetGo').onclick=()=>{
+ const target=miniFeature?L.geoJSON(miniFeature).getBounds():bounds;
+ if(!target.isValid())return;
+ if(miniFeature){
+  const level=miniLevel;
+  $('t'+level).checked=true;sync();pushSettings();
+  // Do not call choose() here: clicking the same region would toggle selection off.
+  if(chosen!==miniFeature){origChoose(miniFeature,false)}
+  setSelectionInfo('region',miniFeature,null);
+ }
+ map.fitBounds(target,{maxZoom:13,padding:[24,24]});
+ if(modeCurrent==='canvas')navigateCanvasToBounds(target);
+};
+$('insetClose').onclick=()=>{insetBox.classList.toggle('minimized');$('insetClose').textContent=insetBox.classList.contains('minimized')?'+':'−';miniUpdate()};
+const miniObserver=new ResizeObserver(miniUpdate);miniObserver.observe(insetBox);
+function miniContains(f,x,y){const rings=miniRings(f);let count=0;for(const r of rings){let within=false;for(let i=0,j=r.length-1;i<r.length;j=i++){const a=r[i],b=r[j];if((a[1]>y)!==(b[1]>y)&&x<(b[0]-a[0])*(y-a[1])/(b[1]-a[1])+a[0])within=!within;}if(within)count++;}return !!(count%2)}
+function miniDraw(){const rect=insetCanvas.getBoundingClientRect();if(rect.width<1||rect.height<1)return;const W=rect.width,H=rect.height,dpr=Math.min(devicePixelRatio||1,2),ctx=insetCanvas.getContext('2d');insetCanvas.width=Math.round(W*dpr);insetCanvas.height=Math.round(H*dpr);ctx.setTransform(dpr,0,0,dpr,0,0);ctx.fillStyle='#f4f8fc';ctx.fillRect(0,0,W,H);
+ const focus=miniFeature;const regionFeatures=focus?[focus]:datasets[0].features;let bb=[Infinity,Infinity,-Infinity,-Infinity];for(const f of regionFeatures){const b=miniBBox(f);if(b[0]<bb[0])bb[0]=b[0];if(b[1]<bb[1])bb[1]=b[1];if(b[2]>bb[2])bb[2]=b[2];if(b[3]>bb[3])bb[3]=b[3]}
+ const pad=17,sc=Math.min((W-2*pad)/Math.max(.000001,bb[2]-bb[0]),(H-2*pad)/Math.max(.000001,bb[3]-bb[1]));
+ const zoomScale=sc*miniZoom;const X=x=>W/2+miniPanX+(x-(bb[0]+bb[2])/2)*zoomScale,Y=y=>H/2+miniPanY-(y-(bb[1]+bb[3])/2)*zoomScale;miniTransform={W,H,sc:zoomScale,bb,X,Y};
+ const path=f=>{ctx.beginPath();for(const r of miniRings(f)){if(!r.length)continue;ctx.moveTo(X(r[0][0]),Y(r[0][1]));for(let i=1;i<r.length;i++)ctx.lineTo(X(r[i][0]),Y(r[i][1]));ctx.closePath()}};
+ // At nationwide level show provinces. Each drill-down shows the immediate next level.
+ const next=Math.min(3,miniLevel+1);const candidates=datasets[next]?.features||[];miniHit=[];
+ if(focus){path(focus);ctx.fillStyle='#ebf2e8';ctx.fill('evenodd');ctx.save();path(focus);ctx.clip('evenodd')}
+ for(const f of candidates){const b=miniBBox(f);if(b[2]<bb[0]||b[0]>bb[2]||b[3]<bb[1]||b[1]>bb[3])continue;
+  // Keep every valid child, including multipart and highly concave districts.
+  if(focus&&!miniBelongsToParent(focus,f,miniLevel))continue;
+  miniHit.push(f);path(f);ctx.fillStyle=f===miniHover?'#92cbab':'#dbeada';ctx.fill('evenodd');ctx.lineWidth=next===3?.6:next===0?1.6:1;ctx.strokeStyle=f===miniHover?'#146a88':'#769a89';ctx.stroke();
+ }
+ if(focus){ctx.restore();path(focus);ctx.lineWidth=2;ctx.strokeStyle='#1c7bba';ctx.stroke()}
+ // Subway lines are always shown, independent of main map layer settings.
+ const selected=metroSelected();ctx.save();if(focus){path(focus);ctx.clip('evenodd')}
+ for(const obj of metroLineData){if(!selected.has(obj.line))continue;ctx.strokeStyle=/^#[0-9a-f]{3,8}$/i.test(obj.color||'')?obj.color:'#64748b';ctx.lineWidth=1.55;ctx.setLineDash(metroFutureLines.has(obj.line)?[4,3]:[]);
+  for(const nd of obj.node||[]){const via=nd.via||[];if(via.length<2)continue;const pts=via.map(v=>miniProj(+v[1],+v[0]));if(!pts.some(([x,y])=>x>=bb[0]&&x<=bb[2]&&y>=bb[1]&&y<=bb[3]))continue;ctx.beginPath();pts.forEach(([x,y],i)=>i?ctx.lineTo(X(x),Y(y)):ctx.moveTo(X(x),Y(y)));ctx.stroke();}
+ }
+ ctx.setLineDash([]);const labels=[];
+ for(const st of metroAllStations){if(!st.lines.some(l=>selected.has(l)))continue;const [x,y]=miniProj(st.lng,st.lat);if(x<bb[0]||x>bb[2]||y<bb[1]||y>bb[3])continue;if(focus&&!miniContains(focus,x,y))continue;const xx=X(x),yy=Y(y);ctx.beginPath();ctx.arc(xx,yy,2.4,0,2*Math.PI);ctx.fillStyle='#fff';ctx.fill();ctx.strokeStyle=metroColors[st.lines[0]]||'#555';ctx.lineWidth=1.6;ctx.stroke();if(miniLevel>=0&&labels.every(([a,b])=>Math.hypot(a-xx,b-yy)>32)){ctx.font='9px sans-serif';ctx.fillStyle='#24384d';ctx.fillText(st.names[0]||'',xx+4,yy-3);labels.push([xx,yy])}}
+ ctx.restore();$('insetName').textContent=focus?nameOf(focus)+' · '+(miniLevel===3?'최하위 단계':['광역시·도','시·군','시·군·구','읍·면·동'][next]):'대한민국 · 광역시·도';$('insetFooter').textContent=miniLevel===3?'최하위 행정구역 · 이동 또는 초기화':'마우스 오버: 지명 · 클릭: 다음 단계 · 역/노선 표시';$('insetBack').disabled=miniLevel<0;
+}
+function miniLocal(e){const b=insetCanvas.getBoundingClientRect();return [e.clientX-b.left,e.clientY-b.top]}
+function miniFind(e){const m=miniTransform;if(!m)return null;const [xx,yy]=miniLocal(e);const x=(xx-m.W/2-miniPanX)/m.sc+(m.bb[0]+m.bb[2])/2,y=(m.H/2+miniPanY-yy)/m.sc+(m.bb[1]+m.bb[3])/2;for(let i=miniHit.length-1;i>=0;i--)if(miniContains(miniHit[i],x,y))return miniHit[i];return null}
+
+function miniApplyZoom(factor,anchorX,anchorY){
+ const old=miniZoom;miniZoom=Math.max(0.7,Math.min(30,miniZoom*factor));const rat=miniZoom/old;
+ const {width:W,height:H}=insetCanvas.getBoundingClientRect();
+ miniPanX=anchorX-W/2-(anchorX-W/2-miniPanX)*rat;
+ miniPanY=anchorY-H/2-(anchorY-H/2-miniPanY)*rat;
+ miniUpdate();
+}
+$('insetZoomIn').onclick=()=>miniApplyZoom(1.35,insetCanvas.clientWidth/2,insetCanvas.clientHeight/2);
+$('insetZoomOut').onclick=()=>miniApplyZoom(1/1.35,insetCanvas.clientWidth/2,insetCanvas.clientHeight/2);
+insetCanvas.addEventListener('wheel',e=>{e.preventDefault();const [x,y]=miniLocal(e);miniApplyZoom(e.deltaY<0?1.2:1/1.2,x,y)},{passive:false});
+let miniPointer=null;
+insetCanvas.addEventListener('pointerdown',e=>{miniPointer={id:e.pointerId,x:e.clientX,y:e.clientY,startX:e.clientX,startY:e.clientY,moved:false};insetCanvas.setPointerCapture(e.pointerId)});
+insetCanvas.addEventListener('pointermove',e=>{if(!miniPointer||e.pointerId!==miniPointer.id)return;const dx=e.clientX-miniPointer.x,dy=e.clientY-miniPointer.y;if(Math.hypot(e.clientX-miniPointer.startX,e.clientY-miniPointer.startY)>4)miniPointer.moved=true;if(miniPointer.moved){miniPanX+=dx;miniPanY+=dy;miniUpdate()}miniPointer.x=e.clientX;miniPointer.y=e.clientY});
+insetCanvas.addEventListener('pointerup',e=>{if(miniPointer&&e.pointerId===miniPointer.id){const wasMoved=miniPointer.moved;miniPointer=null;if(wasMoved)miniSuppressClick=true}});
+let miniSuppressClick=false;
+const resizeGrip=$('miniResizeHandle');let miniResizeStart=null;
+resizeGrip.addEventListener('pointerdown',e=>{e.preventDefault();e.stopPropagation();resizeGrip.setPointerCapture(e.pointerId);miniResizeStart={id:e.pointerId,x:e.clientX,y:e.clientY,w:insetBox.offsetWidth,h:insetBox.offsetHeight}});
+resizeGrip.addEventListener('pointermove',e=>{if(!miniResizeStart||miniResizeStart.id!==e.pointerId)return;insetBox.style.width=Math.max(235,Math.min(window.innerWidth-16,miniResizeStart.w+miniResizeStart.x-e.clientX))+'px';insetBox.style.height=Math.max(210,Math.min(window.innerHeight-20,miniResizeStart.h+miniResizeStart.y-e.clientY))+'px';miniUpdate()});
+resizeGrip.addEventListener('pointerup',()=>{miniResizeStart=null});resizeGrip.addEventListener('pointercancel',()=>{miniResizeStart=null});
+
+insetCanvas.addEventListener('mousemove',e=>{const f=miniFind(e);insetCanvas.title=f?nameOf(f):'';if(f!==miniHover){miniHover=f;miniUpdate()}});
+insetCanvas.addEventListener('mouseleave',()=>{miniHover=null;miniUpdate()});
+insetCanvas.addEventListener('click',e=>{if(miniSuppressClick){miniSuppressClick=false;return}const f=miniFind(e);if(f&&miniLevel<3){miniTrail.push({feature:miniFeature,level:miniLevel});miniSet(f,miniLevel+1,{preserveTrail:true})}});
+map.on('moveend',()=>{if(modeCurrent==='leaflet'){} });
+metroSelect.addEventListener('change',miniUpdate);
+miniUpdate();
+window.addEventListener('resize',miniUpdate);
+
+})().catch(e=>{console.error("지도 실행 오류",e);alert("지도 실행 오류: "+e.message)});
+</script></body></html>
